@@ -1,0 +1,455 @@
+---
+title: "TBD_risk"
+author: "Abrar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Merging all dataset with shape file
+```{r}
+library(dplyr)
+library(readr)
+library(stringr)
+select <- dplyr::select
+# Import all three dataset
+
+pred_tick <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick Data/predicted_tick_scaled.csv")
+
+tbp_prev <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/IDPH/idph_combined_data.csv")
+
+tbd_inc <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_annual_average_incidence_scaled_vector.csv")
+
+tick_exp <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick bite/tick_bite_annual_average_incidence_scaled.csv")
+
+# Print column name
+colnames(pred_tick)
+colnames(tbp_prev)
+colnames(tbd_inc)
+colnames(tick_exp)
+
+
+# Standardize County column: lowercase + no spaces
+fix_county <- function(df, col = "County") {
+  df %>% rename(County = all_of(col)) %>%
+    mutate(County = County |> str_to_lower() |> str_replace_all(" ", ""))
+}
+
+pred_tick <- fix_county(pred_tick)           # already named "County"
+tbd_inc   <- fix_county(tbd_inc)             # already named "County"
+tick_exp  <- fix_county(tick_exp)            # already named "County"
+tbp_prev  <- fix_county(tbp_prev, "COUNTY") # uppercase → rename first
+
+# Full join all four
+tbd_all <- pred_tick %>%
+  full_join(tbd_inc,  by = "County") %>%
+  full_join(tick_exp, by = "County") %>%
+  full_join(tbp_prev, by = "County")
+
+# remove double population column coming from tick_exp data only for 65 counties
+tbd_all <- tbd_all %>% dplyr::select(-Population)
+
+#View(tbd_all)
+
+
+##Shape File
+
+library(sf)
+
+# Import shapefile
+IL_shape <- st_read("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Illinois_shape_file/IL_BNDY_County_Py.shp")
+
+# Print column names
+print(colnames(IL_shape))
+
+# Keep only county name + geometry
+IL_shape <- IL_shape %>%
+  select(COUNTY_NAM, geometry)
+
+IL_shape <- IL_shape %>%
+  mutate(County_std = COUNTY_NAM |> str_to_lower() |> str_replace_all(" ", ""))
+
+tbd_all <- tbd_all %>%
+  mutate(County_std = County |> str_to_lower() |> str_replace_all(" ", ""))
+
+tbd_all <- IL_shape %>%
+  left_join(tbd_all, by = "County_std")
+
+##check
+nrow(tbd_all)                        # should be 102
+sum(is.na(tbd_all$is_tbd_cases))     # should be 0
+sum(is.na(tbd_all$PM_aa_scaled))     # should be 0
+setdiff(IL_shape$County_std, tbd_all$County_std)  # should be character(0)
+
+# View
+##View(tbd_all)
+
+write_csv(tbd_all, "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Combine spatial dataset/tbd_all.csv")
+
+cat("Done! File written successfully.\n")
+
+```
+
+## Smoothing of TBP prevlence
+```{r}
+library(sf)
+library(spdep)
+library(dplyr)
+
+# Build first order neighbor list
+nb <- poly2nb(tbd_all)
+lw <- nb2listw(nb, style = "W", zero.policy = TRUE)
+
+# Global mean prevalence (ignoring NA), this never fails
+global_mean_aa <- mean(tbd_all$Prev_aa, na.rm = TRUE)
+global_mean_dv <- mean(tbd_all$Prev_dv, na.rm = TRUE)
+global_mean_is <- mean(tbd_all$Prev_is, na.rm = TRUE)
+
+# Local neighbor mean (can be NA if neighbors are also NA)
+tbd_all <- tbd_all %>%
+  mutate(
+    local_aa = lag.listw(lw, Prev_aa, zero.policy = TRUE, NAOK = TRUE),
+    local_dv = lag.listw(lw, Prev_dv, zero.policy = TRUE, NAOK = TRUE),
+    local_is = lag.listw(lw, Prev_is, zero.policy = TRUE, NAOK = TRUE)
+  )
+
+# Empirical Bayes shrinkage function
+# weight = how much to trust local/own data vs global mean
+# Total_tested determines confidence: more ticks tested = trust local data more
+eb_smooth <- function(own_val, local_val, global_val, n_tested, k = 10) {
+  n_tested <- ifelse(is.na(n_tested), 0, n_tested)
+  w <- n_tested / (n_tested + k)   # shrinkage weight, grows toward 1 with more samples
+
+  # Fallback hierarchy: own value -> local neighbor mean -> global mean
+  base_val <- ifelse(!is.na(own_val), own_val,
+                     ifelse(!is.na(local_val), local_val, global_val))
+
+  # Blend base value with global mean based on confidence weight
+  smoothed <- w * base_val + (1 - w) * global_val
+  return(smoothed)
+}
+
+# Apply to each species using their respective total tested counts
+tbd_all <- tbd_all %>%
+  mutate(
+    Prev_aa_smooth = eb_smooth(Prev_aa, local_aa, global_mean_aa, Num_Tested_aa, k = 10),
+    Prev_dv_smooth = eb_smooth(Prev_dv, local_dv, global_mean_dv, Num_Tested_dv, k = 10),
+    Prev_is_smooth = eb_smooth(Prev_is, local_is, global_mean_is, Num_Tested_is, k = 10)
+  )
+
+cat("AA remaining NA:", sum(is.na(tbd_all$Prev_aa_smooth)), "\n")
+cat("DV remaining NA:", sum(is.na(tbd_all$Prev_dv_smooth)), "\n")
+cat("IS remaining NA:", sum(is.na(tbd_all$Prev_is_smooth)), "\n")
+
+tbd_all %>%
+  st_drop_geometry() %>%
+  select(County, Prev_aa, Num_Tested_aa, Prev_aa_smooth,
+         Prev_dv, Num_Tested_dv, Prev_dv_smooth,
+         Prev_is, Num_Tested_is, Prev_is_smooth) %>%
+  head(15)
+
+#View(tbd_all)
+```
+
+
+## Scaling IDPH TBP prevalence smoothed data
+```{r}
+# Scale function — zeros stay zero, NAs stay NA
+scale_01 <- function(x) {
+  zero_mask <- !is.na(x) & x == 0
+  na_mask   <- is.na(x)
+  
+  q_low  <- quantile(x, 0.01, na.rm = TRUE)
+  q_high <- quantile(x, 0.99, na.rm = TRUE)
+  
+  x_clipped <- pmin(pmax(x, q_low), q_high)
+  scaled <- (x_clipped - q_low) / (q_high - q_low)
+  scaled <- scaled * 0.98 + 0.01
+  
+  scaled[zero_mask] <- 0
+  scaled[na_mask]   <- NA
+  
+  return(scaled)
+}
+
+# Add scaled columns directly onto tbd_all, keeping all original columns + geometry
+tbd_all <- tbd_all %>%
+  mutate(
+    Prev_aa_scaled = scale_01(Prev_aa_smooth),
+    Prev_dv_scaled = scale_01(Prev_dv_smooth),
+    Prev_is_scaled = scale_01(Prev_is_smooth)
+  ) %>%
+  mutate(across(c(Prev_aa_smooth, Prev_dv_smooth, Prev_is_smooth,
+                  Prev_aa_scaled, Prev_dv_scaled, Prev_is_scaled),
+                ~ round(.x, 5)))
+
+# Confirm tbd_all still has all original columns plus the new ones
+names(tbd_all)
+
+# Build a trimmed export-only dataframe with just the selected columns
+val_scaled <- tbd_all %>%
+  st_drop_geometry() %>%
+  select(County, Status_aa, Num_Tested_aa, Num_Positive_aa, Prev_aa, Prev_aa_smooth,
+         Status_is, Num_Tested_is, Num_Positive_is, Prev_is, Prev_is_smooth,
+         Status_dv, Num_Tested_dv, Num_Positive_dv, Prev_dv, Prev_dv_smooth,
+         Prev_aa_scaled, Prev_dv_scaled, Prev_is_scaled)
+
+print(val_scaled)
+
+# Export only the trimmed version to CSV
+out_path <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/IDPH/idph_combined_data_smoothed_scaled.csv"
+write_csv(val_scaled, out_path)
+cat("Saved to:", out_path, "\n")
+
+# Update the complete combined dataset after prevalence smoothing and scaling
+tbd_all %>%
+  st_drop_geometry() %>%
+  write_csv(
+    "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Combine spatial dataset/tbd_all.csv"
+  )
+
+cat("Updated complete tbd_all.csv with scaled prevalence columns\n")
+
+#View(tbd_all)
+```
+
+
+
+
+## Maping
+```{r}
+library(ggplot2)
+library(scales)
+library(viridis)
+library(sf)
+library(grid)
+library(patchwork)
+
+## THEME
+my_theme <- theme_minimal(base_family = "sans") +
+  ggplot2::theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background  = element_rect(fill = "white", color = NA),
+    panel.grid       = element_blank(),
+    plot.title       = element_text(hjust = 0.5, size = 12, face = "italic"),
+    legend.title     = element_blank(),
+    legend.text      = element_text(size = 12),
+    axis.text.x      = element_blank(),
+    axis.text.y      = element_blank(),
+    axis.ticks.x     = element_blank(),
+    axis.ticks.y     = element_blank(),
+    axis.title.x     = element_blank(),
+    axis.title.y     = element_blank()
+  )
+
+## SINGLE SCALE FOR ALL MAPS
+my_scale <- scale_fill_gradientn(
+  colors = c(
+    "white",
+    viridis::plasma(100, direction = 1)
+  ),
+  values = scales::rescale(c(
+    0,
+    seq(0.0001, 1, length.out = 100)
+  )),
+  na.value = "grey70",
+  limits = c(0, 1),
+  breaks = c(0.25, 0.50, 0.75, 1.00),
+  labels = c("0.25", "0.50", "0.75", "1.00"),
+  guide = guide_colorbar(
+    direction = "vertical",
+    barwidth = unit(0.5, "cm"),
+    barheight = unit(4, "cm"),
+    title = NULL
+  )
+)
+
+## SWATCH GROB — square boxes, black text
+swatch_grob <- function() {
+  grobTree(
+    rectGrob(
+      x = 0.22, y = 0.70,
+      width = 0.25, height = 0.25,
+      gp = gpar(fill = "white", col = "grey60", lwd = 0.8)
+    ),
+    textGrob("0",  x = 0.75, y = 0.70,    # matches white box
+             gp = gpar(fontsize = 12, col = "black")),
+    rectGrob(
+      x = 0.22, y = 0.25,
+      width = 0.25, height = 0.25,
+      gp = gpar(fill = "grey70", col = "grey60", lwd = 0.8)
+    ),
+    textGrob("NA", x = 0.75, y = 0.25,    # matches grey box
+             gp = gpar(fontsize = 12, col = "black"))
+  )
+}
+
+## PREDICTED TICK ABUNDANCE MAPS
+p_PM_aa_scaled <- ggplot(tbd_all) +
+  geom_sf(aes(fill = PM_aa_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Abundance of A. americanum") +
+  my_theme
+print(p_PM_aa_scaled)
+
+p_PM_dv_scaled <- ggplot(tbd_all) +
+  geom_sf(aes(fill = PM_dv_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Abundance of D. variabilis") +
+  my_theme
+print(p_PM_dv_scaled)
+
+p_PM_is_scaled <- ggplot(tbd_all) +
+  geom_sf(aes(fill = PM_is_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Abundance of I. scapularis") +
+  my_theme
+print(p_PM_is_scaled)
+
+## PATHOGEN PREVALENCE IN TICKS MAPS
+p_Prev_aa <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Prev_aa), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Pathogens in A. americanum") +
+  my_theme
+print(p_Prev_aa)
+
+p_Prev_dv <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Prev_dv), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Pathogens in D. variabilis") +
+  my_theme
+print(p_Prev_dv)
+
+p_Prev_is <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Prev_is), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Pathogens in I. scapularis") +
+  my_theme
+print(p_Prev_is)
+
+## PATHOGEN PREVALENCE IN TICKS MAPS (SMOOTHED)
+p_Prev_aa_smoothed <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Prev_aa_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Pathogens in A. americanum") +
+  my_theme
+print(p_Prev_aa_smoothed)
+
+p_Prev_dv_smoothed <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Prev_dv_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Pathogens in D. variabilis") +
+  my_theme
+print(p_Prev_dv_smoothed)
+
+p_Prev_is_smoothed <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Prev_is_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Pathogens in I. scapularis") +
+  my_theme
+print(p_Prev_is_smoothed)
+
+## HUMAN TBD INCIDENCE MAPS
+p_Inc_aa_dis <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Inc_scaled_aa_cases), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Diseases by A. americanum") +
+  my_theme
+print(p_Inc_aa_dis)
+
+p_Inc_dv_dis <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Inc_scaled_dv_cases), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Diseases by D. variabilis") +
+  my_theme
+print(p_Inc_dv_dis)
+
+p_Inc_is_dis <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Inc_scaled_is_cases), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Diseases by I. scapularis") +
+  my_theme
+print(p_Inc_is_dis)
+
+## TICK BITE EXPOSURE MAPS
+p_Inc_scaled_aa_exp <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Inc_scaled_aa_bite), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Exposure of A. americanum") +
+  my_theme
+print(p_Inc_scaled_aa_exp)
+
+p_Inc_scaled_dv_exp <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Inc_scaled_dv_bite), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Exposure of D. variabilis") +
+  my_theme
+print(p_Inc_scaled_dv_exp)
+
+p_Inc_scaled_is_exp <- ggplot(tbd_all) +
+  geom_sf(aes(fill = Inc_scaled_is_bite), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Exposure of I. scapularis") +
+  my_theme
+print(p_Inc_scaled_is_exp)
+
+## SAVE PANELS
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output"
+
+add_leg <- function(p) p + ggplot2::theme(legend.position = "right")
+
+save_panel <- function(plots, filename, w = 10, h = 4.5) {
+  panel <- wrap_plots(lapply(plots, add_leg),
+                      ncol   = 3,
+                      guides = "collect")
+  png(file.path(out_dir, filename), width = w, height = h,
+      units = "in", res = 300)
+  grid.newpage()
+  print(panel, newpage = FALSE)
+
+  if (!filename %in% c("panel_predicted_ticks.png",
+                     "panel_pathogen_prevalence_Smoothed.png")) {
+    vp <- viewport(x = 0.85, y = 0.20, width = 0.055, height = 0.18)
+    pushViewport(vp)
+    grid.draw(swatch_grob())
+    popViewport()
+  }
+
+  dev.off()
+  message("Saved: ", filename)
+}
+
+save_panel(list(p_PM_aa_scaled,       p_PM_dv_scaled,       p_PM_is_scaled),
+           "panel_predicted_ticks.png")
+
+save_panel(list(p_Prev_aa,     p_Prev_dv,     p_Prev_is),
+           "panel_pathogen_prevalence.png")
+
+save_panel(list(p_Prev_aa_smoothed,     p_Prev_dv_smoothed,     p_Prev_is_smoothed),
+           "panel_pathogen_prevalence_Smoothed.png")
+
+save_panel(list(p_Inc_aa_dis, p_Inc_dv_dis, p_Inc_is_dis),
+  "panel_human_TBD_incidence.png")
+
+save_panel(list(p_Inc_scaled_aa_exp,  p_Inc_scaled_dv_exp,  p_Inc_scaled_is_exp),
+           "panel_exposure_incidence.png")
+
+
+combined_panel <- (p_PM_aa_scaled + p_PM_dv_scaled + p_PM_is_scaled) /
+                  (p_Prev_aa_smoothed + p_Prev_dv_smoothed + p_Prev_is_smoothed) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "right")
+
+ggsave(
+  file.path(out_dir, "panel_ticks_and_smoothed_prevalence.tiff"),
+  combined_panel, width = 10, height = 8.5, dpi = 300, compression = "lzw"
+)
+
+```
+
+

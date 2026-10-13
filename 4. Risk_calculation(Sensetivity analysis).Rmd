@@ -1,0 +1,702 @@
+---
+title: "Weighted Risk Index"
+author: "Abrar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+scale_01 <- function(x) {
+  q_low  <- quantile(x, 0.01, na.rm = TRUE)
+  q_high <- quantile(x, 0.99, na.rm = TRUE)
+
+  x_clipped <- pmin(pmax(x, q_low), q_high)
+
+  scaled <- (x_clipped - q_low) / (q_high - q_low)
+  scaled <- scaled * 0.98 + 0.01
+
+  return(scaled)
+}
+
+```
+
+## Risk calculation
+```{r}
+library(dplyr)
+library(readr)
+library(tidyr)
+library(sf)
+
+# Import combined dataset
+tbd_all <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Combine spatial dataset/tbd_all.csv")
+
+tbd_risk <- tbd_all %>%
+  mutate(
+    # treat zero prevalence same as NA
+    Prev_aa_adj = ifelse(!is.na(Prev_aa_scaled) & Prev_aa_scaled > 0,
+                         Prev_aa_scaled, NA),
+    Prev_dv_adj = ifelse(!is.na(Prev_dv_scaled) & Prev_dv_scaled > 0,
+                         Prev_dv_scaled, NA),
+    Prev_is_adj = ifelse(!is.na(Prev_is_scaled) & Prev_is_scaled > 0,
+                         Prev_is_scaled, NA),
+
+    # treat zero bite same as NA
+    Bite_aa_adj = ifelse(!is.na(Inc_scaled_aa_bite) & Inc_scaled_aa_bite > 0,
+                         Inc_scaled_aa_bite, NA),
+    Bite_dv_adj = ifelse(!is.na(Inc_scaled_dv_bite) & Inc_scaled_dv_bite > 0,
+                         Inc_scaled_dv_bite, NA),
+    Bite_is_adj = ifelse(!is.na(Inc_scaled_is_bite) & Inc_scaled_is_bite > 0,
+                         Inc_scaled_is_bite, NA),
+
+    # AA — fallback hierarchy
+    Risk_aa = case_when(
+      !is.na(Prev_aa_adj) & !is.na(Bite_aa_adj) ~
+        (1/3) * PM_aa_scaled + (1/3) * Prev_aa_adj + (1/3) * Bite_aa_adj,
+      !is.na(Prev_aa_adj) & is.na(Bite_aa_adj) ~
+        0.5 * PM_aa_scaled + 0.5 * Prev_aa_adj,
+      is.na(Prev_aa_adj) & !is.na(Bite_aa_adj) ~
+        0.5 * PM_aa_scaled + 0.5 * Bite_aa_adj,
+      TRUE ~ PM_aa_scaled
+    ),
+
+    # DV
+    Risk_dv = case_when(
+      !is.na(Prev_dv_adj) & !is.na(Bite_dv_adj) ~
+        (1/3) * PM_dv_scaled + (1/3) * Prev_dv_adj + (1/3) * Bite_dv_adj,
+      !is.na(Prev_dv_adj) & is.na(Bite_dv_adj) ~
+        0.5 * PM_dv_scaled + 0.5 * Prev_dv_adj,
+      is.na(Prev_dv_adj) & !is.na(Bite_dv_adj) ~
+        0.5 * PM_dv_scaled + 0.5 * Bite_dv_adj,
+      TRUE ~ PM_dv_scaled
+    ),
+
+    # IS
+    Risk_is = case_when(
+      !is.na(Prev_is_adj) & !is.na(Bite_is_adj) ~
+        (1/3) * PM_is_scaled + (1/3) * Prev_is_adj + (1/3) * Bite_is_adj,
+      !is.na(Prev_is_adj) & is.na(Bite_is_adj) ~
+        0.5 * PM_is_scaled + 0.5 * Prev_is_adj,
+      is.na(Prev_is_adj) & !is.na(Bite_is_adj) ~
+        0.5 * PM_is_scaled + 0.5 * Bite_is_adj,
+      TRUE ~ PM_is_scaled
+    ),
+
+    # method flag
+    Method_aa = case_when(
+      !is.na(Prev_aa_adj) & !is.na(Bite_aa_adj) ~ "Abundance + Prevalence + Bite",
+      !is.na(Prev_aa_adj) & is.na(Bite_aa_adj)  ~ "Abundance + Prevalence",
+      is.na(Prev_aa_adj)  & !is.na(Bite_aa_adj) ~ "Abundance + Bite",
+      TRUE                                        ~ "Abundance only"
+    ),
+    Method_dv = case_when(
+      !is.na(Prev_dv_adj) & !is.na(Bite_dv_adj) ~ "Abundance + Prevalence + Bite",
+      !is.na(Prev_dv_adj) & is.na(Bite_dv_adj)  ~ "Abundance + Prevalence",
+      is.na(Prev_dv_adj)  & !is.na(Bite_dv_adj) ~ "Abundance + Bite",
+      TRUE                                        ~ "Abundance only"
+    ),
+    Method_is = case_when(
+      !is.na(Prev_is_adj) & !is.na(Bite_is_adj) ~ "Abundance + Prevalence + Bite",
+      !is.na(Prev_is_adj) & is.na(Bite_is_adj)  ~ "Abundance + Prevalence",
+      is.na(Prev_is_adj)  & !is.na(Bite_is_adj) ~ "Abundance + Bite",
+      TRUE                                        ~ "Abundance only"
+    )
+  ) %>%
+  mutate(
+    Risk_aa_scaled = scale_01(Risk_aa),
+    Risk_dv_scaled = scale_01(Risk_dv),
+    Risk_is_scaled = scale_01(Risk_is)
+  )
+
+# Print method summary
+print(as.data.frame(tbd_risk %>% count(Method_aa)))
+print(as.data.frame(tbd_risk %>% count(Method_dv)))
+print(as.data.frame(tbd_risk %>% count(Method_is)))
+
+# Export
+tbd_risk %>%
+  select(County, Risk_aa_scaled, Risk_dv_scaled, Risk_is_scaled) %>%
+  write_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled_sensitivity_analysis.csv")
+
+cat("Saved: Vector_level_risk_scaled_sensitivity_analysis.csv\n")
+
+```
+
+
+## Plotting
+```{r}
+library(ggplot2)
+library(dplyr)
+
+
+# Import sensitivity analysis risk scores
+tbd_risk <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled_sensitivity_analysis.csv")
+
+# Common theme
+bar_theme <- theme_minimal(base_family = "sans") +
+  theme(
+    panel.grid       = element_blank(),
+    axis.line.x      = element_line(color = "black", linewidth = 0.6),
+    axis.line.y      = element_line(color = "black", linewidth = 0.6),
+    axis.ticks       = element_line(color = "black"),
+    axis.text.y      = element_text(size = 11,  color = "black"),
+    axis.text.x      = element_text(size = 11,  color = "black"),
+    axis.title.x     = element_text(size = 12, color = "black"),
+    plot.title       = element_text(hjust = 0.5, size = 16, face = "italic")
+  )
+
+# AA
+plot_aa <- tbd_risk %>%
+  arrange(Risk_aa_scaled) %>%
+  mutate(County = factor(County, levels = County)) %>%
+  ggplot(aes(x = Risk_aa_scaled, y = County)) +
+  geom_bar(stat = "identity", fill = "grey40", width = 0.7) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(title = expression(italic("Amblyomma americanum")),
+       x = "Risk score", y = NULL) +
+  bar_theme
+print(plot_aa)
+
+# DV
+plot_dv <- tbd_risk %>%
+  arrange(Risk_dv_scaled) %>%
+  mutate(County = factor(County, levels = County)) %>%
+  ggplot(aes(x = Risk_dv_scaled, y = County)) +
+  geom_bar(stat = "identity", fill = "grey40", width = 0.7) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(title = expression(italic("Dermacentor variabilis")),
+       x = "Risk score", y = NULL) +
+  bar_theme
+print(plot_dv)
+
+# IS
+plot_is <- tbd_risk %>%
+  arrange(Risk_is_scaled) %>%
+  mutate(County = factor(County, levels = County)) %>%
+  ggplot(aes(x = Risk_is_scaled, y = County)) +
+  geom_bar(stat = "identity", fill = "grey40", width = 0.7) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  labs(title = expression(italic("Ixodes scapularis")),
+       x = "Risk score", y = NULL) +
+  bar_theme
+print(plot_is)
+
+# Save
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/Sensetivity analysis"
+
+ggsave(file.path(out_dir, "risk_plot_aa_sensetivity_analysis.png"), plot_aa, width = 10, height = 14, dpi = 300)
+ggsave(file.path(out_dir, "risk_plot_dv_sensetivity_analysis.png"), plot_dv, width = 10, height = 14, dpi = 300)
+ggsave(file.path(out_dir, "risk_plot_is_sensetivity_analysis.png"), plot_is, width = 10, height = 14, dpi = 300)
+
+
+
+
+###Pannel
+
+library(ggplot2)
+library(patchwork)
+
+# Panel data — alphabetical county order
+df_panel <- tbd_risk
+df_panel$County <- factor(df_panel$County,
+                          levels = sort(unique(tbd_risk$County)))
+
+# Ixodes panel
+p_is_panel <- ggplot(df_panel, aes(x = Risk_is_scaled, y = County)) +
+  geom_col(width = 0.7) +
+  labs(x = "Risk score", y = NULL,
+       title = expression(italic("Ixodes scapularis"))) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  theme_classic() +
+  theme(
+    panel.grid   = element_blank(),
+    axis.title.x = element_text(face = "bold", color = "black"),
+    axis.text.x  = element_text(color = "black"),
+    axis.text.y  = element_text(color = "black", size = 8),
+    plot.title   = element_text(face = "bold", hjust = 0.5)
+  )
+
+# Dermacentor panel
+p_dv_panel <- ggplot(df_panel, aes(x = Risk_dv_scaled, y = County)) +
+  geom_col(width = 0.7) +
+  labs(x = "Risk score", y = NULL,
+       title = expression(italic("Dermacentor variabilis"))) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  theme_classic() +
+  theme(
+    panel.grid   = element_blank(),
+    axis.title.x = element_text(face = "bold", color = "black"),
+    axis.text.x  = element_text(color = "black"),
+    axis.text.y  = element_text(color = "black", size = 8),
+    plot.title   = element_text(face = "bold", hjust = 0.5)
+  )
+
+# Amblyomma panel
+p_aa_panel <- ggplot(df_panel, aes(x = Risk_aa_scaled, y = County)) +
+  geom_col(width = 0.7) +
+  labs(x = "Risk score", y = NULL,
+       title = expression(italic("Amblyomma americanum"))) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+  theme_classic() +
+  theme(
+    panel.grid   = element_blank(),
+    axis.title.x = element_text(face = "bold", color = "black"),
+    axis.text.x  = element_text(color = "black"),
+    axis.text.y  = element_text(color = "black", size = 8),
+    plot.title   = element_text(face = "bold", hjust = 0.5)
+  )
+
+# Combine
+p_panel <- p_aa_panel + p_dv_panel + p_is_panel + plot_layout(ncol = 3)
+
+# Save as TIFF
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/Sensetivity analysis"
+
+ggsave(
+  file.path(out_dir, "All_species_risk_panel_sensetivity_analysis.tiff"),
+  plot        = p_panel,
+  width       = 18,
+  height      = 10,
+  dpi         = 300,
+  compression = "lzw"
+)
+
+p_panel
+```
+
+
+## Mapping
+```{r}
+library(sf)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(viridis)
+library(grid)
+library(patchwork)
+library(scales)
+
+# Import sensitivity analysis risk scores
+tbd_risk <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled_sensitivity_analysis.csv")
+
+## MERGE
+IL_shape <- st_read("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Illinois_shape_file/IL_BNDY_County_Py.shp")
+
+IL_risk_sf <- IL_shape %>%
+  dplyr::select(COUNTY_NAM, geometry) %>%
+  dplyr::mutate(
+    County_std = COUNTY_NAM %>% str_to_lower() %>% str_replace_all(" ", "")
+  ) %>%
+  dplyr::left_join(
+    tbd_risk %>%
+      dplyr::mutate(County_std = County %>% str_to_lower() %>% str_replace_all(" ", "")) %>%
+      dplyr::select(County_std, Risk_aa_scaled, Risk_dv_scaled, Risk_is_scaled),
+    by = "County_std"
+  )
+
+## THEME
+my_theme <- theme_minimal(base_family = "sans") +
+  ggplot2::theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background  = element_rect(fill = "white", color = NA),
+    panel.grid       = element_blank(),
+    plot.title       = element_text(hjust = 0.5, size = 12, face = "italic"),
+    legend.title     = element_blank(),
+    legend.text      = element_text(size = 12),
+    axis.text.x      = element_blank(),
+    axis.text.y      = element_blank(),
+    axis.ticks.x     = element_blank(),
+    axis.ticks.y     = element_blank(),
+    axis.title.x     = element_blank(),
+    axis.title.y     = element_blank()
+  )
+
+## SCALE
+my_scale <- scale_fill_gradientn(
+  colors = c(
+    "white",
+    viridis::plasma(100, direction = 1)
+  ),
+  values = scales::rescale(c(
+    0,
+    seq(0.0001, 1, length.out = 100)
+  )),
+  na.value = "grey70",
+  limits = c(0, 1),
+  breaks = c(0.25, 0.50, 0.75, 1.00),
+  labels = c("0.25", "0.50", "0.75", "1.00"),
+  guide = guide_colorbar(
+    direction = "vertical",
+    barwidth = unit(0.5, "cm"),
+    barheight = unit(4, "cm"),
+    title = NULL
+  )
+)
+
+## RISK MAPS
+p_Risk_aa <- ggplot(IL_risk_sf) +
+  geom_sf(aes(fill = Risk_aa_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Risk of A. americanum") +
+  my_theme
+print(p_Risk_aa)
+
+p_Risk_dv <- ggplot(IL_risk_sf) +
+  geom_sf(aes(fill = Risk_dv_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Risk of D. variabilis") +
+  my_theme
+print(p_Risk_dv)
+
+p_Risk_is <- ggplot(IL_risk_sf) +
+  geom_sf(aes(fill = Risk_is_scaled), color = "grey60", linewidth = 0.15) +
+  my_scale +
+  ggtitle("Risk of I. scapularis") +
+  my_theme
+print(p_Risk_is)
+
+## SAVE PANEL
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/Sensetivity analysis"
+
+add_leg <- function(p) p + ggplot2::theme(legend.position = "right")
+
+risk_panel <- wrap_plots(list(
+  add_leg(p_Risk_aa),
+  add_leg(p_Risk_dv),
+  add_leg(p_Risk_is)
+), ncol = 3, guides = "collect")
+
+ggsave(file.path(out_dir, "panel_Risk_ticks_sensetivity_analysis.png"),
+       risk_panel, width = 10, height = 4.5, dpi = 300)
+
+message("Saved: panel_Risk_ticks.png")
+
+```
+
+
+
+## Comoparing sensetivity analysis values with normal
+```{r}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(patchwork)
+
+# Import both risk score files
+primary  <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled.csv")
+
+sensitiv <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled_sensitivity_analysis.csv")
+
+# Merge by County
+comparison <- primary %>%
+  inner_join(sensitiv, by = "County", suffix = c("_primary", "_sens"))
+
+# Spearman correlation tests
+cat("\n--- A. americanum ---\n")
+print(cor.test(comparison$Risk_aa_scaled_primary,
+               comparison$Risk_aa_scaled_sens,
+               method = "spearman"))
+
+cat("\n--- D. variabilis ---\n")
+print(cor.test(comparison$Risk_dv_scaled_primary,
+               comparison$Risk_dv_scaled_sens,
+               method = "spearman"))
+
+cat("\n--- I. scapularis ---\n")
+print(cor.test(comparison$Risk_is_scaled_primary,
+               comparison$Risk_is_scaled_sens,
+               method = "spearman"))
+
+# Summary table
+cor_table <- data.frame(
+  Species    = c("A. americanum", "D. variabilis", "I. scapularis"),
+  Spearman_r = round(c(
+    cor(comparison$Risk_aa_scaled_primary, comparison$Risk_aa_scaled_sens,
+        method = "spearman", use = "complete.obs"),
+    cor(comparison$Risk_dv_scaled_primary, comparison$Risk_dv_scaled_sens,
+        method = "spearman", use = "complete.obs"),
+    cor(comparison$Risk_is_scaled_primary, comparison$Risk_is_scaled_sens,
+        method = "spearman", use = "complete.obs")
+  ), 3)
+)
+print(cor_table)
+
+
+# Fancy scatter plot function — no individual legend
+plot_cor <- function(data, x_col, y_col, species_label) {
+
+  r_val <- round(cor(data[[x_col]], data[[y_col]],
+                     method = "spearman", use = "complete.obs"), 3)
+
+  ggplot(data, aes(x = .data[[x_col]], y = .data[[y_col]])) +
+    geom_smooth(method = "lm", se = TRUE,
+                color     = "#3B3B98",
+                fill      = "#A8A8D8",
+                alpha     = 0.3,
+                linewidth = 0.8) +
+    geom_abline(slope     = 1,
+                intercept = 0,
+                linetype  = "dashed",
+                color     = "red",
+                linewidth = 0.6) +
+    geom_point(aes(color = abs(.data[[x_col]] - .data[[y_col]])),
+               size = 2.5, alpha = 0.85) +
+    scale_color_gradient(
+  low = "grey30",
+  high = "#E84646",
+  name = "Absolute difference",
+  limits = c(0, 1),
+  guide = guide_colorbar(
+  direction = "horizontal",
+  title.position = "left",
+  title.theme = element_text(
+    size = 10,
+    vjust = 1.0,
+    margin = margin(r = 6)
+  ),
+  barwidth = unit(5, "cm"),
+  barheight = unit(0.30, "cm")
+)
+)  +   # fix limits same across all
+    #annotate("text", x = 0.05, y = 0.93, label = paste0("r[s] == ", r_val), parse = TRUE, size = 6, hjust = 0, color = "black", fontface = "bold") +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    labs(
+    title = bquote(italic(.(species_label))),
+    x = "Primary risk score\n(Abundance + Prevalence)",
+    y = "Sensitivity risk score\n(Abundance + Prevalence + Bite)"
+     )  +
+    theme_classic() +
+    theme(
+  plot.title = element_text(hjust = 0.5, size = 16, face = "italic"),
+  axis.text = element_text(color = "black", size = 12),
+
+  axis.title.x = element_text(
+    color = "black", size = 14, face = "bold",
+    margin = margin(t = 2, b = -8)
+  ),
+
+  axis.title.y = element_text(
+    color = "black", size = 14, face = "bold"
+  ),
+
+  legend.title = element_text(size = 14),
+  legend.text = element_text(size = 10),
+
+  legend.box.margin = margin(t = -12, b = 0),
+  legend.box.spacing = grid::unit(0, "pt"),
+  legend.margin = margin(t = 0, b = 0)
+)
+}
+
+# Build plots
+p1 <- plot_cor(comparison, "Risk_aa_scaled_primary",
+               "Risk_aa_scaled_sens", "Amblyomma americanum")
+p2 <- plot_cor(comparison, "Risk_dv_scaled_primary",
+               "Risk_dv_scaled_sens", "Dermacentor variabilis")
+p3 <- plot_cor(comparison, "Risk_is_scaled_primary",
+               "Risk_is_scaled_sens", "Ixodes scapularis")
+
+# Combine plots with common axis titles and shared legend
+plots_row <- p1 + p2 + p3 +
+  plot_layout(
+    ncol = 3,
+    axis_titles = "collect"
+  )
+
+cor_panel <- plots_row / guide_area() +
+  plot_layout(
+    heights = c(10, 0.65),
+    guides = "collect"
+  ) &
+  theme(
+    legend.position = "bottom",
+    legend.margin = margin(0, 0, 0, 0),
+    legend.box.margin = margin(0, 0, 0, 0),
+    legend.box.spacing = unit(0, "pt"),
+
+    axis.title.x = element_text(
+      color = "black",
+      size = 14,
+      face = "bold",
+      margin = margin(t = 3, b = 0)
+    ),
+
+    axis.title.y = element_text(
+      color = "black",
+      size = 14,
+      face = "bold"
+    )
+  )
+
+print(cor_panel)
+
+ggsave(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/sensitivity_analysis_correlation.tiff",
+  plot = cor_panel,
+  width = 14,
+  height = 5.5,
+  dpi = 300,
+  compression = "lzw"
+)
+
+```
+
+## Comoparing sensetivity analysis values with normal (Diferent color Dots)
+```{r}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(patchwork)
+
+# Import both risk score files
+primary  <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled.csv")
+
+sensitiv <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled_sensitivity_analysis.csv")
+
+# Merge by County
+comparison <- primary %>%
+  inner_join(sensitiv, by = "County", suffix = c("_primary", "_sens"))
+
+# Spearman correlation tests
+cat("\n--- A. americanum ---\n")
+print(cor.test(comparison$Risk_aa_scaled_primary,
+               comparison$Risk_aa_scaled_sens,
+               method = "spearman"))
+
+cat("\n--- D. variabilis ---\n")
+print(cor.test(comparison$Risk_dv_scaled_primary,
+               comparison$Risk_dv_scaled_sens,
+               method = "spearman"))
+
+cat("\n--- I. scapularis ---\n")
+print(cor.test(comparison$Risk_is_scaled_primary,
+               comparison$Risk_is_scaled_sens,
+               method = "spearman"))
+
+# Summary table
+cor_table <- data.frame(
+  Species    = c("A. americanum", "D. variabilis", "I. scapularis"),
+  Spearman_r = round(c(
+    cor(comparison$Risk_aa_scaled_primary, comparison$Risk_aa_scaled_sens,
+        method = "spearman", use = "complete.obs"),
+    cor(comparison$Risk_dv_scaled_primary, comparison$Risk_dv_scaled_sens,
+        method = "spearman", use = "complete.obs"),
+    cor(comparison$Risk_is_scaled_primary, comparison$Risk_is_scaled_sens,
+        method = "spearman", use = "complete.obs")
+  ), 3)
+)
+print(cor_table)
+
+max_diff <- max(
+  abs(comparison$Risk_aa_scaled_primary - comparison$Risk_aa_scaled_sens),
+  abs(comparison$Risk_dv_scaled_primary - comparison$Risk_dv_scaled_sens),
+  abs(comparison$Risk_is_scaled_primary - comparison$Risk_is_scaled_sens),
+  na.rm = TRUE
+)
+
+# Fancy scatter plot function — no individual legend
+plot_cor <- function(data, x_col, y_col, species_label) {
+
+  r_val <- round(cor(data[[x_col]], data[[y_col]],
+                     method = "spearman", use = "complete.obs"), 3)
+
+  ggplot(data, aes(x = .data[[x_col]], y = .data[[y_col]])) +
+    geom_smooth(method = "lm", se = TRUE,
+                color = "#3B3B98",
+                fill = "#A8A8D8",
+                alpha = 0.3,
+                linewidth = 0.8) +
+    geom_abline(slope = 1,
+                intercept = 0,
+                linetype = "dashed",
+                color = "red",
+                linewidth = 0.6) +
+    geom_point(
+      aes(color = cut(
+        abs(.data[[x_col]] - .data[[y_col]]),
+        breaks = c(-Inf, 0.05, 0.10, 0.20, Inf),
+        labels = c("<0.05", "0.05-0.10", "0.10-0.20", ">0.20")
+      )),
+      size = 3,
+      alpha = 0.9
+    ) +
+    scale_color_manual(
+      values = c(
+        "<0.05" = "grey30",
+        "0.05-0.10" = "steelblue4",
+        "0.10-0.20" = "goldenrod",
+        ">0.20" = "firebrick"
+      ),
+      name = "Absolute difference"
+    ) +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    labs(
+    title = bquote(italic(.(species_label))),
+    x = "Primary risk score\n(Abundance + Prevalence)",
+    y = "Sensitivity risk score\n(Abundance + Prevalence + Bite)"
+    )  +
+    theme_classic() +
+    theme(
+      plot.title   = element_text(hjust = 0.5, size = 16, face = "italic"),
+      axis.text    = element_text(color = "black", size = 12),
+      axis.title   = element_text(color = "black", size = 14, face = "bold"),
+      legend.title = element_text(size = 14),
+      legend.text  = element_text(size = 10)
+    )
+}
+
+# Build plots
+p1 <- plot_cor(comparison, "Risk_aa_scaled_primary",
+               "Risk_aa_scaled_sens", "Amblyomma americanum")
+p2 <- plot_cor(comparison, "Risk_dv_scaled_primary",
+               "Risk_dv_scaled_sens", "Dermacentor variabilis")
+p3 <- plot_cor(comparison, "Risk_is_scaled_primary",
+               "Risk_is_scaled_sens", "Ixodes scapularis")
+
+# Combine plots with common axis titles and shared legend
+cor_panel <- p1 + p2 + p3 +
+  plot_layout(
+    ncol = 3,
+    guides = "collect",
+    axis_titles = "collect"
+  ) &
+  theme(
+    legend.position = "bottom",
+
+    # reduce space between X-axis title and legend
+    legend.box.spacing = grid::unit(0, "pt"),
+    legend.box.margin = margin(t = -2, b = 0),
+    legend.margin = margin(t = 0, b = 0),
+
+    axis.title.x = element_text(
+      color = "black",
+      size = 14,
+      face = "bold",
+      margin = margin(t = 3, b = 0)
+    ),
+
+    axis.title.y = element_text(
+      color = "black",
+      size = 14,
+      face = "bold",
+      margin = margin(r = 8)
+    )
+  )
+ggsave(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/2_sensitivity_analysis_correlation.tiff",
+  plot = cor_panel,
+  width = 14,
+  height = 5.5,
+  dpi = 300,
+  compression = "lzw"
+)
+
+```

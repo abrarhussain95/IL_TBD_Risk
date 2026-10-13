@@ -1,0 +1,604 @@
+---
+title: "Seasonal Risk"
+author: "Abrar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r}
+
+library(dplyr)
+library(tidyr)
+library(readr)
+
+# county risk data
+risk_df <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled.csv"
+)
+
+# phenology data
+phen_df <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Temporal Data/merged_monthly_phen_scaled_clean.csv"
+)
+
+# reshape risk to long format
+risk_long <- risk_df %>%
+  dplyr::select(County, Risk_is_scaled, Risk_dv_scaled, Risk_aa_scaled) %>%
+  tidyr::pivot_longer(
+    cols = starts_with("Risk"),
+    names_to = "species",
+    values_to = "RR"
+  ) %>%
+  dplyr::mutate(species = dplyr::case_when(
+    species == "Risk_is_scaled" ~ "is",
+    species == "Risk_dv_scaled" ~ "dv",
+    species == "Risk_aa_scaled" ~ "aa"
+  ))
+
+# reshape phenology to long
+phen_long <- phen_df %>%
+  tidyr::pivot_longer(
+    cols = dplyr::ends_with("phen_scal"),
+    names_to = "species",
+    values_to = "phen"
+  ) %>%
+  dplyr::mutate(species = dplyr::case_when(
+    species == "is_phen_scal" ~ "is",
+    species == "dv_phen_scal" ~ "dv",
+    species == "aa_phen_scal" ~ "aa"
+  ))
+
+# rename species columns first
+risk_long2 <- risk_long %>%
+  dplyr::rename(species_risk = species)
+
+phen_long2 <- phen_long %>%
+  dplyr::rename(species_phen = species)
+
+# cross join and keep matching species only
+final_df <- risk_long2 %>%
+  tidyr::crossing(phen_long2) %>%
+  dplyr::filter(species_risk == species_phen) %>%
+  dplyr::mutate(
+    Seasonal_Risk = RR * phen
+  ) %>%
+  dplyr::select(
+    County,
+    Month,
+    species = species_risk,
+    RR,
+    phen,
+    Seasonal_Risk
+  ) %>%
+  dplyr::arrange(County, species, Month)
+
+#Export
+write.csv(
+  final_df,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Monthly risk/county_monthly_risk_long_formate.csv",
+  row.names = FALSE
+)
+
+
+# make Month an ordered factor so columns stay Jan to Dec
+final_df <- final_df %>%
+  dplyr::mutate(
+    Month = factor(
+      Month,
+      levels = c("Jan","Feb","Mar","Apr","May","Jun",
+                 "Jul","Aug","Sep","Oct","Nov","Dec")
+    )
+  )
+
+# create wide dataframe: one row per county, one column per month-species
+final_wide <- final_df %>%
+  dplyr::mutate(month_species = paste(as.character(Month), species, sep = "_")) %>%
+  dplyr::select(County, month_species, Seasonal_Risk) %>%
+  tidyr::pivot_wider(
+    names_from = month_species,
+    values_from = Seasonal_Risk
+  )
+
+# optional: arrange columns exactly how you want
+final_wide <- final_wide %>%
+  dplyr::select(
+    County,
+    Jan_aa, Feb_aa, Mar_aa, Apr_aa, May_aa, Jun_aa, Jul_aa, Aug_aa, Sep_aa, Oct_aa, Nov_aa, Dec_aa,
+    Jan_dv, Feb_dv, Mar_dv, Apr_dv, May_dv, Jun_dv, Jul_dv, Aug_dv, Sep_dv, Oct_dv, Nov_dv, Dec_dv,
+    Jan_is, Feb_is, Mar_is, Apr_is, May_is, Jun_is, Jul_is, Aug_is, Sep_is, Oct_is, Nov_is, Dec_is
+  )
+
+#View(final_wide)
+
+##Join this with regional classification of counties (north, south, central)
+
+region_df <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/County classification/Regional classification of counties.csv")
+
+clean_names <- function(x) {
+  tolower(gsub("\\s+", "", x))   # remove spaces only, keep dots
+}
+
+final_wide <- final_wide %>%
+  mutate(County = clean_names(County))
+
+region_df <- region_df %>%
+  mutate(County = clean_names(County)) %>%
+  select(County, Region)
+
+final_wide <- final_wide %>%
+  left_join(region_df, by = "County")
+
+# View(final_wide)
+write.csv(
+  final_wide,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Monthly risk/county_monthly_risk_wide_formate.csv",
+  row.names = FALSE
+)
+
+```
+
+
+## Convertig nuerial values into quntile catagories
+```{r}
+
+library(readr)
+library(dplyr)
+
+file_path <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Monthly risk/county_monthly_risk_wide_formate.csv"
+
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Monthly risk"
+
+final_wide <- read_csv(file_path)
+
+risk_cols <- c(
+  "Jan_aa","Feb_aa","Mar_aa","Apr_aa","May_aa","Jun_aa","Jul_aa","Aug_aa","Sep_aa","Oct_aa","Nov_aa","Dec_aa",
+  "Jan_dv","Feb_dv","Mar_dv","Apr_dv","May_dv","Jun_dv","Jul_dv","Aug_dv","Sep_dv","Oct_dv","Nov_dv","Dec_dv",
+  "Jan_is","Feb_is","Mar_is","Apr_is","May_is","Jun_is","Jul_is","Aug_is","Sep_is","Oct_is","Nov_is","Dec_is"
+)
+
+risk_levels <- c("very low", "low", "medium", "high", "very high")
+
+final_wide <- final_wide %>%
+  mutate(
+    across(
+      all_of(risk_cols),
+      ~ cut(
+        .x,
+        breaks = c(0, 0.01, 0.10, 0.30, 0.60, 1.00),
+        labels = risk_levels,
+        include.lowest = TRUE,
+        right = TRUE
+      ),
+      .names = "{.col}_cat"
+    )
+  )
+write_csv(
+  final_wide,
+  file.path(out_dir, "county_monthly_risk_wide_formate_with_categories.csv")
+)
+```
+
+
+## Joining with shape file
+```{r}
+library(sf)
+library(dplyr)
+library(stringr)
+
+# Import shapefile
+IL_shape <- st_read("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Illinois_shape_file/IL_BNDY_County_Py.shp")
+
+# Standardize shapefile county key, but do not keep extra county columns in final join
+IL_shape <- IL_shape %>%
+  select(geometry, COUNTY_NAM) %>%
+  mutate(
+    County_std = COUNTY_NAM %>%
+      str_to_lower() %>%
+      str_replace_all("\\s+", "")
+  )
+
+# Standardize county key in final_wide
+final_wide <- final_wide %>%
+  mutate(
+    County = County %>%
+      str_to_lower() %>%
+      str_replace_all("\\s+", ""),
+    County_std = County
+  )
+
+# Join and keep only one county column
+Final_Risk_sf <- IL_shape %>%
+  left_join(final_wide, by = "County_std") %>%
+  select(-COUNTY_NAM, -County_std) %>%
+  select(County, everything())
+
+
+colnames(Final_Risk_sf)
+
+sum(is.na(Final_Risk_sf$Jan_aa))
+sum(is.na(Final_Risk_sf$Jan_dv))
+sum(is.na(Final_Risk_sf$Jan_is))
+
+#View(Final_Risk_sf)
+
+```
+
+
+
+##Interactive Plotting
+```{r}
+library(sf)
+library(dplyr)
+library(leaflet)
+library(htmltools)
+
+Final_Risk_sf <- Final_Risk_sf %>%
+  st_transform(4326)
+
+IL_outline <- Final_Risk_sf %>%
+  summarise() %>%
+  st_union() %>%
+  st_as_sf()
+
+month_levels <- c("Jan","Feb","Mar","Apr","May","Jun",
+                  "Jul","Aug","Sep","Oct","Nov","Dec")
+
+risk_levels <- c("very low", "low", "medium", "high", "very high")
+
+risk_palette <- c(
+  "very low"  = "#deebf7",
+  "low"       = "#3182bd",
+  "medium"    = "#feb24c",
+  "high"      = "#f03b20",
+  "very high" = "#bd0026"
+)
+
+risk_labels <- risk_levels
+
+range_box <- HTML(
+  paste0(
+    "<div style='background:white;padding:8px;border:1px solid #bbb;",
+    "border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,0.2);",
+    "font-size:13px; width:360px;'>",
+    
+    "<details>",
+    "<summary style='cursor:pointer; font-weight:bold; color:#2c3e50;'>How to interpret</summary>",
+    
+    "<div style='margin-top:6px; line-height:1.5;'>",
+    "Values range from 0 to 1 and show the relative level of tick-related disease activity across counties.<br><br>",
+    
+    "&#8226; <b>Very low</b> (0.00–0.05): Very little disease activity<br>",
+    "&#8226; <b>Low</b> (0.05–0.10): Low disease activity<br>",
+    "&#8226; <b>Medium</b> (0.10–0.30): Moderate disease activity<br>",
+    "&#8226; <b>High</b> (0.30–0.60): High disease activity<br>",
+    "&#8226; <b>Very high</b> (&gt;0.60): Very high disease activity<br><br>",
+    
+    "These values are relative and allow comparison between counties. ",
+    "They do not represent individual risk or probability of infection.",
+    "</div>",
+    
+    "</details>",
+    "</div>"
+  )
+)
+make_month_map_cat <- function(sf_obj, species_code, species_title) {
+  
+  month_cols <- paste0(month_levels, "_", species_code, "_cat")
+  value_cols <- paste0(month_levels, "_", species_code)
+  
+  pal <- colorFactor(
+    palette = risk_palette,
+    levels = risk_levels,
+    ordered = TRUE,
+    na.color = "transparent"
+  )
+  
+  m <- leaflet(sf_obj) %>%
+  addTiles()
+  
+  for (i in seq_along(month_levels)) {
+    mo <- month_levels[i]
+    cat_col <- month_cols[i]
+    val_col <- value_cols[i]
+    
+    tmp <- sf_obj %>%
+      mutate(
+        map_value = factor(.data[[cat_col]], levels = risk_levels, ordered = TRUE),
+        num_value = .data[[val_col]],
+        map_month = mo
+      )
+    
+    m <- m %>%
+      addPolygons(
+        data = tmp,
+        group = mo,
+        fillColor = ~pal(map_value),
+        fillOpacity = 0.85,
+        color = "#9E9E9E",   # slim gray county borders
+        weight = 0.35,
+        opacity = 1,
+        smoothFactor = 0.2,
+        popup = ~paste0(
+          "<b>County:</b> ", County, "<br>",
+          "<b>Species:</b> ", species_title, "<br>",
+          "<b>Month:</b> ", map_month, "<br>",
+          "<b>Value:</b> ", round(num_value, 4), "<br>",
+          "<b>Category:</b> ", map_value
+        )
+      )
+  }
+  
+  for (mo in month_levels[-1]) {
+    m <- m %>% hideGroup(mo)
+  }
+  
+  m %>%
+    addPolygons(
+      data = IL_outline,
+      fill = FALSE,
+      color = "black",   # dark Illinois boundary
+      weight = 0.75,
+      opacity = 1
+    ) %>%
+    addLegend(
+      position = "bottomright",
+      colors = unname(risk_palette),
+      labels = risk_labels,
+      title = HTML(paste0("<b>", species_title, "</b><br>Category")),
+      opacity = 0.9
+    ) %>%
+    addControl(
+      html = range_box,
+      position = "bottomleft"
+    ) %>%
+    addLayersControl(
+      baseGroups = month_levels,
+      position = "topright",
+      options = layersControlOptions(collapsed = FALSE)
+    )
+}
+
+map_aa <- make_month_map_cat(Final_Risk_sf, "aa", "Amblyomma americanum")
+map_dv <- make_month_map_cat(Final_Risk_sf, "dv", "Dermacentor variabilis")
+map_is <- make_month_map_cat(Final_Risk_sf, "is", "Ixodes scapularis")
+
+map_aa
+map_dv
+map_is
+
+```
+
+
+## Smoothing
+```{r}
+# Load required libraries
+library(spdep)
+library(sf)
+library(dplyr)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+
+# Build queen contiguity spatial weights from your existing Final_Risk_sf
+nb <- poly2nb(Final_Risk_sf, queen = TRUE)
+lw <- nb2listw(nb, style = "W", zero.policy = TRUE)
+
+# Define month levels and all 36 numeric risk column names
+month_levels <- c("Jan","Feb","Mar","Apr","May","Jun",
+                  "Jul","Aug","Sep","Oct","Nov","Dec")
+
+risk_cols_num <- c(
+  paste0(month_levels, "_aa"),
+  paste0(month_levels, "_dv"),
+  paste0(month_levels, "_is")
+)
+
+# Apply spatial lag smoothing and store as new columns with _smooth suffix
+# Original columns are NOT touched or replaced
+for (col in risk_cols_num) {
+  Final_Risk_sf[[paste0(col, "_smooth")]] <- lag.listw(
+    lw,
+    Final_Risk_sf[[col]],
+    zero.policy = TRUE
+  )
+}
+
+# Define risk levels and breaks for categorization
+risk_levels <- c("very low", "low", "medium", "high", "very high")
+
+risk_cols_smooth <- paste0(risk_cols_num, "_smooth")
+
+# Categorize each smoothed column and store as new _smooth_cat columns
+# Wide sf object now has original, smooth numeric, and smooth category columns all separate
+Final_Risk_sf <- Final_Risk_sf %>%
+  mutate(
+    across(
+      all_of(risk_cols_smooth),
+      ~ cut(
+        as.numeric(.x),
+        breaks = c(0, 0.01, 0.10, 0.30, 0.60, 1.00),
+        labels = risk_levels,
+        include.lowest = TRUE,
+        right = TRUE
+      ),
+      .names = "{.col}_cat"
+    )
+  )
+
+# Define color palette and labels for the five risk categories
+risk_palette <- c(
+  "very low"  = "#deebf7",
+  "low"       = "#3182bd",
+  "medium"    = "#feb24c",
+  "high"      = "#f03b20",
+  "very high" = "#bd0026"
+)
+
+risk_labels <- risk_levels
+
+# Build the Illinois outer boundary for the black state outline
+IL_outline <- Final_Risk_sf %>%
+  summarise() %>%
+  st_union() %>%
+  st_as_sf()
+
+# Interpretive info box shown on bottom left of each map
+range_box <- HTML(
+  paste0(
+    "<div style='background:white;padding:8px;border:1px solid #bbb;",
+    "border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,0.2);",
+    "font-size:13px; width:360px;'>",
+    "<details>",
+    "<summary style='cursor:pointer; font-weight:bold; color:#2c3e50;'>How to interpret</summary>",
+    "<div style='margin-top:6px; line-height:1.5;'>",
+    "Values range from 0 to 1 and show the relative level of tick-related disease activity across counties.<br><br>",
+    "&#8226; <b>Very low</b> (0.00 to 0.01): Very little disease activity<br>",
+    "&#8226; <b>Low</b> (0.01 to 0.10): Low disease activity<br>",
+    "&#8226; <b>Medium</b> (0.10 to 0.30): Moderate disease activity<br>",
+    "&#8226; <b>High</b> (0.30 to 0.60): High disease activity<br>",
+    "&#8226; <b>Very high</b> (above 0.60): Very high disease activity<br><br>",
+    "Values are spatially smoothed using queen contiguity spatial lag. ",
+    "They are relative and allow comparison between counties. ",
+    "They do not represent individual risk or probability of infection.",
+    "</div>",
+    "</details>",
+    "</div>"
+  )
+)
+
+# Function to build one interactive smoothed map for a given tick species
+# Uses _smooth columns for color and _smooth_cat for category display
+# Original raw values also shown in popup for reference
+make_smooth_map <- function(sf_obj, species_code, species_title) {
+
+  month_cat_cols  <- paste0(month_levels, "_", species_code, "_smooth_cat")
+  month_num_cols  <- paste0(month_levels, "_", species_code, "_smooth")
+  month_orig_cols <- paste0(month_levels, "_", species_code)
+
+  pal <- colorFactor(
+    palette  = risk_palette,
+    levels   = risk_levels,
+    ordered  = TRUE,
+    na.color = "transparent"
+  )
+
+  m <- leaflet(sf_obj) %>%
+  addTiles()
+
+  for (i in seq_along(month_levels)) {
+
+    mo       <- month_levels[i]
+    cat_col  <- month_cat_cols[i]
+    num_col  <- month_num_cols[i]
+    orig_col <- month_orig_cols[i]
+
+    tmp <- sf_obj %>%
+      mutate(
+        map_cat   = factor(.data[[cat_col]],  levels = risk_levels, ordered = TRUE),
+        map_num   = .data[[num_col]],
+        map_orig  = .data[[orig_col]],
+        map_month = mo
+      )
+
+    m <- m %>%
+      addPolygons(
+        data         = tmp,
+        group        = mo,
+        fillColor    = ~pal(map_cat),
+        fillOpacity  = 0.85,
+        color        = "#9E9E9E",
+        weight       = 0.35,
+        opacity      = 1,
+        smoothFactor = 0.2,
+        popup = ~paste0(
+  "<b>County:</b> ",   County,             "<br>",
+  "<b>Species:</b> ",  species_title,      "<br>",
+  "<b>Month:</b> ",    map_month,          "<br>",
+  "<b>Value:</b> ",    round(map_num, 4),  "<br>",
+  "<b>Category:</b> ", map_cat
+)
+      )
+  }
+
+  for (mo in month_levels[-1]) {
+    m <- m %>% hideGroup(mo)
+  }
+
+  m %>%
+    addPolygons(
+      data    = IL_outline,
+      fill    = FALSE,
+      color   = "black",
+      weight  = 0.75,
+      opacity = 1
+    ) %>%
+    addLegend(
+      position = "bottomright",
+      colors   = unname(risk_palette),
+      labels   = risk_labels,
+     title = HTML(paste0(
+  "<div style='min-width:180px; line-height:1.8;'>",
+  "<span style='display:block; white-space:nowrap;'><i>", species_title, "</i></span>",
+  "<span style='display:block; font-weight:normal; font-size:11px;'>Category</span>",
+  "</div>"
+)),
+      opacity  = 0.9
+    ) %>%
+    addControl(
+      html     = range_box,
+      position = "bottomleft"
+    ) %>%
+    addLayersControl(
+      baseGroups = month_levels,
+      position   = "topright",
+      options    = layersControlOptions(collapsed = FALSE)
+    )
+}
+
+# Build the three smoothed interactive maps
+map_aa_smooth <- make_smooth_map(Final_Risk_sf, "aa", "Amblyomma americanum")
+map_dv_smooth <- make_smooth_map(Final_Risk_sf, "dv", "Dermacentor variabilis")
+map_is_smooth <- make_smooth_map(Final_Risk_sf, "is", "Ixodes scapularis")
+
+# View maps in RStudio viewer
+map_aa_smooth
+map_dv_smooth
+map_is_smooth
+
+
+```
+
+
+## Saving html interactive maps
+```{r}
+htmlwidgets::saveWidget(
+  map_aa_smooth,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/Interactive Maps/www/map_aa_monthly.html",
+  selfcontained = TRUE
+)
+
+htmlwidgets::saveWidget(
+  map_dv_smooth,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/Interactive Maps/www/map_dv_monthly.html",
+  selfcontained = TRUE
+)
+
+htmlwidgets::saveWidget(
+  map_is_smooth,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/Interactive Maps/www/map_is_monthly.html",
+  selfcontained = TRUE
+)
+
+```
+
+
+
+
+
+

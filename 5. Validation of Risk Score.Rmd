@@ -1,0 +1,742 @@
+---
+title: "Validation of Risk score"
+author: "Abrar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Validation using correlation
+```{r}
+
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(patchwork)
+
+# Import primary risk scores
+tbd_risk <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled.csv")
+
+# Import TBD incidence data
+tbd_inc <- read_csv("C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_annual_average_incidence_scaled_vector.csv")
+
+# Standardize county names and merge
+validation_df <- tbd_risk %>%
+  mutate(County = County |> stringr::str_to_lower() |>
+           stringr::str_replace_all(" ", "")) %>%
+  inner_join(
+    tbd_inc %>%
+      mutate(County = County |> stringr::str_to_lower() |>
+               stringr::str_replace_all(" ", "")),
+    by = "County"
+  )
+
+# Check merge
+cat("Counties in validation dataset:", nrow(validation_df), "\n")
+
+# Spearman correlation tests
+cat("\n--- A. americanum ---\n")
+cor_aa <- cor.test(validation_df$Risk_aa_scaled,
+                   validation_df$Inc_aa_cases,
+                   method = "spearman")
+print(cor_aa)
+
+cat("\n--- D. variabilis ---\n")
+cor_dv <- cor.test(validation_df$Risk_dv_scaled,
+                   validation_df$Inc_dv_cases,
+                   method = "spearman")
+print(cor_dv)
+
+cat("\n--- I. scapularis ---\n")
+cor_is <- cor.test(validation_df$Risk_is_scaled,
+                   validation_df$Inc_is_cases,
+                   method = "spearman")
+print(cor_is)
+
+# Summary table
+cor_summary <- data.frame(
+  Species    = c("A. americanum", "D. variabilis", "I. scapularis"),
+  Spearman_r = round(c(cor_aa$estimate,
+                        cor_dv$estimate,
+                        cor_is$estimate), 3),
+  P_value    = round(c(cor_aa$p.value,
+                        cor_dv$p.value,
+                        cor_is$p.value), 4)
+)
+print(cor_summary)
+
+# Scatter plots
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output"
+
+plot_val <- function(data, risk_col, inc_col, species_label) {
+
+  r_val <- round(cor(data[[risk_col]], data[[inc_col]],
+                     method = "spearman", use = "complete.obs"), 3)
+  p_val <- cor.test(data[[risk_col]], data[[inc_col]],
+                    method = "spearman")$p.value
+  p_label <- ifelse(p_val < 0.001, "p < 0.001",
+                    paste0("p = ", round(p_val, 3)))
+
+  ggplot(data, aes(x = .data[[risk_col]], y = .data[[inc_col]])) +
+    geom_point(aes(color = .data[[risk_col]]),
+               size = 2.5, alpha = 0.85) +
+    geom_smooth(method = "lm", se = TRUE,
+                color     = "#3B3B98",
+                fill      = "#A8A8D8",
+                alpha     = 0.3,
+                linewidth = 0.8) +
+    scale_color_gradient(low  = "grey30",
+                         high = "#E84646",
+                         name = "Risk score",
+                         limits = c(0, 1)) +
+    annotate("text",
+             x        = 0.05,
+             y        = max(data[[inc_col]], na.rm = TRUE) * 0.95,
+             label    = paste0("r[s] == ", r_val, "~~", p_label),
+             parse    = TRUE,
+             size     = 3.5,
+             hjust    = 0,
+             color    = "black",
+             fontface = "bold") +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    labs(title = bquote(italic(.(species_label))),
+         x     = "Risk score",
+         y     = "Annual average incidence\n(per 100,000)") +
+    theme_classic() +
+    theme(
+      plot.title   = element_text(hjust = 0.5, size = 11, face = "italic"),
+      axis.text    = element_text(color = "black", size = 9),
+      axis.title   = element_text(color = "black", size = 9),
+      legend.title = element_text(size = 8),
+      legend.text  = element_text(size = 7)
+    )
+}
+
+p1 <- plot_val(validation_df, "Risk_aa_scaled",
+               "Inc_aa_cases", "Amblyomma americanum")
+p2 <- plot_val(validation_df, "Risk_dv_scaled",
+               "Inc_dv_cases", "Dermacentor variabilis")
+p3 <- plot_val(validation_df, "Risk_is_scaled",
+               "Inc_is_cases", "Ixodes scapularis")
+
+val_panel <- p1 + p2 + p3 +
+  plot_layout(ncol = 3, guides = "collect") &
+  ggplot2::theme(legend.position = "bottom")
+
+print(val_panel)
+
+
+ggsave(file.path(out_dir, "validation_spearman_correlation.tiff"),
+       val_panel, width = 14, height = 5.5, dpi = 300,
+       compression = "lzw")
+
+message("Saved: validation_spearman_correlation.png/.tiff")
+
+```
+
+
+
+## Validtaion using negative binomial regression
+```{r}
+library(MASS)
+library(readr)
+library(dplyr)
+
+# Import primary risk scores
+tbd_risk <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled.csv"
+)
+
+# Import TBD incidence data
+tbd_inc <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_annual_average_incidence_scaled_vector.csv"
+)
+
+# Standardize county names and merge
+validation_df <- tbd_risk %>%
+  mutate(County = tolower(stringr::str_replace_all(County, " ", ""))) %>%
+  inner_join(
+    tbd_inc %>%
+      mutate(County = tolower(stringr::str_replace_all(County, " ", ""))),
+    by = "County"
+  )
+
+cat("Counties in validation dataset:", nrow(validation_df), "\n")
+
+# Ixodes scapularis NB regression
+# Outcome: is_tbd_cases, predictor: Risk_is_scaled, offset: log(population)
+m_nb_is <- glm.nb(is_tbd_cases ~ Risk_is_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+summary(m_nb_is)
+cat("\nIS IRR:", exp(coef(m_nb_is)["Risk_is_scaled"]), "\n")
+cat("IS 95% CI IRR:", exp(confint(m_nb_is)["Risk_is_scaled", ]), "\n")
+
+# Dermacentor variabilis NB regression
+# Outcome: dv_tbd_cases, predictor: Risk_dv_scaled, offset: log(population)
+m_nb_dv <- glm.nb(dv_tbd_cases ~ Risk_dv_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+summary(m_nb_dv)
+cat("\nDV IRR:", exp(coef(m_nb_dv)["Risk_dv_scaled"]), "\n")
+cat("DV 95% CI IRR:", exp(confint(m_nb_dv)["Risk_dv_scaled", ]), "\n")
+
+# Amblyomma americanum NB regression
+# Outcome: aa_tbd_cases, predictor: Risk_aa_scaled, offset: log(population)
+m_nb_aa <- glm.nb(aa_tbd_cases ~ Risk_aa_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+summary(m_nb_aa)
+cat("\nAA IRR:", exp(coef(m_nb_aa)["Risk_aa_scaled"]), "\n")
+cat("AA 95% CI IRR:", exp(confint(m_nb_aa)["Risk_aa_scaled", ]), "\n")
+```
+
+## Plotting Negative Binomial Results
+```{r}
+library(MASS)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# Import primary risk scores
+tbd_risk <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled.csv"
+)
+
+# Import TBD incidence data
+tbd_inc <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_annual_average_incidence_scaled_vector.csv"
+)
+
+# Standardize county names and merge
+validation_df <- tbd_risk %>%
+  mutate(County = tolower(stringr::str_replace_all(County, " ", ""))) %>%
+  inner_join(
+    tbd_inc %>%
+      mutate(County = tolower(stringr::str_replace_all(County, " ", ""))),
+    by = "County"
+  )
+
+cat("Counties in validation dataset:", nrow(validation_df), "\n")
+
+
+# Ixodes scapularis NB regression
+m_nb_is <- glm.nb(is_tbd_cases ~ Risk_is_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+# Dermacentor variabilis NB regression
+m_nb_dv <- glm.nb(dv_tbd_cases ~ Risk_dv_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+# Amblyomma americanum NB regression
+m_nb_aa <- glm.nb(aa_tbd_cases ~ Risk_aa_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+# Forest plot data
+# Order: AA top, DV middle, IS bottom to match scatter left to right
+forest_df <- data.frame(
+  Species = c("Amblyomma americanum",
+              "Dermacentor variabilis",
+              "Ixodes scapularis"),
+
+  IRR = c(
+    exp(coef(m_nb_aa)["Risk_aa_scaled"] * 0.2),
+    exp(coef(m_nb_dv)["Risk_dv_scaled"] * 0.2),
+    exp(coef(m_nb_is)["Risk_is_scaled"] * 0.2)
+  ),
+
+  lower = c(
+    exp(confint(m_nb_aa)["Risk_aa_scaled", 1] * 0.2),
+    exp(confint(m_nb_dv)["Risk_dv_scaled", 1] * 0.2),
+    exp(confint(m_nb_is)["Risk_is_scaled", 1] * 0.2)
+  ),
+
+  upper = c(
+    exp(confint(m_nb_aa)["Risk_aa_scaled", 2] * 0.2),
+    exp(confint(m_nb_dv)["Risk_dv_scaled", 2] * 0.2),
+    exp(confint(m_nb_is)["Risk_is_scaled", 2] * 0.2)
+  ),
+
+  p_val = c(
+    coef(summary(m_nb_aa))["Risk_aa_scaled", "Pr(>|z|)"],
+    coef(summary(m_nb_dv))["Risk_dv_scaled", "Pr(>|z|)"],
+    coef(summary(m_nb_is))["Risk_is_scaled", "Pr(>|z|)"]
+  )
+)
+
+forest_df <- forest_df %>%
+  mutate(
+    Species = factor(Species, levels = c("Ixodes scapularis",
+                                         "Dermacentor variabilis",
+                                         "Amblyomma americanum")),
+    sig_label = case_when(
+      p_val < 0.001 ~ "p < 0.001",
+      p_val < 0.01  ~ paste0("p = ", round(p_val, 3)),
+      TRUE          ~ paste0("p = ", round(p_val, 3))
+    ),
+    irr_label = paste0("IRR = ", round(IRR, 2),
+                       " (", round(lower, 2), "-", round(upper, 2), ")")
+  )
+
+# Forest plot
+p_forest <- ggplot(forest_df, aes(y = Species, x = IRR, color = Species)) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "gray50", linewidth = 0.6) +
+  geom_errorbarh(aes(xmin = lower, xmax = upper),
+                 height = 0.15, linewidth = 0.8) +
+  geom_point(size = 4, shape = 18) +
+  geom_text(aes(label = irr_label, x = upper),
+            hjust = -0.08, size = 4.5, color = "black") +
+  geom_text(aes(label = sig_label, x = lower),
+            hjust = 1.08, size = 4, color = "black", fontface = "italic") +
+ scale_color_manual(values = c(
+ "Ixodes scapularis"      = "#264653",
+ "Dermacentor variabilis" = "#2F6B5F",
+ "Amblyomma americanum"   = "#8C3B3B"
+)) +
+  scale_y_discrete(labels = c(
+    "Ixodes scapularis"      = expression(italic("I. scapularis")),
+    "Dermacentor variabilis" = expression(italic("D. variabilis")),
+    "Amblyomma americanum"   = expression(italic("A. americanum"))
+  )) +
+  scale_x_log10(
+    breaks = c(0.1, 1, 10, 100),
+    labels = c("0.1", "1", "10", "100"),
+    limits = c(0.05, 100)
+  )+
+  labs(
+    x     = "Incidence rate ratio",
+    y     = NULL
+  ) +
+  theme_classic(base_size = 16) +
+  theme(
+    legend.position    = "none",
+    axis.text          = element_text(color = "black", size = 14),
+    axis.title         = element_text(color = "black", size = 14),
+    plot.title         = element_text(face = "bold", size = 16, color = "black"),
+    panel.grid.major.x = element_line(color = "gray92", linewidth = 0.4)
+  )
+
+print(p_forest)
+
+# Scatter plot function with optional y-axis label and optional legend
+scatter_nb <- function(data, risk_col, case_col, model, species_label, dot_color, show_legend = TRUE) {
+  pred_df <- data.frame(
+    risk       = seq(min(data[[risk_col]], na.rm = TRUE),
+                     max(data[[risk_col]], na.rm = TRUE),
+                     length.out = 200),
+    population = mean(data$population)
+  )
+  names(pred_df)[1] <- risk_col
+  pred_df$fitted <- predict(model,
+                            newdata = pred_df,
+                            type = "response") / mean(data$population) * 100000
+  obs_df <- data %>%
+    mutate(
+      obs_inc = .data[[case_col]] / population * 100000,
+      risk    = .data[[risk_col]]
+    )
+  ggplot() +
+    geom_point(data = obs_df,
+               aes(x = risk, y = obs_inc, size = population),
+               fill = dot_color, color = "black", alpha = 0.55, shape = 21,
+               stroke = 0.3,
+               show.legend = show_legend) +
+    geom_line(data = pred_df,
+              aes(x = .data[[risk_col]], y = fitted),
+              color = "black", linewidth = 0.9) +
+    scale_size_continuous(
+      name   = "Population",
+      range  = c(1, 6),
+      labels = scales::comma,
+      guide  = guide_legend(override.aes = list(fill = "white", color = "black", stroke = 0.6))
+    )  +
+    guides(fill = "none") +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    labs(
+      title = bquote(italic(.(species_label))),
+      x     = "Risk score",
+      y     = if (species_label == "Amblyomma americanum") "Incidence per 100,000" else NULL
+    ) +
+    theme_classic(base_size = 16) +
+    theme(
+      plot.title      = element_text(hjust = 0.5, size = 16,
+                                     face = "italic", color = "black"),
+      axis.text       = element_text(color = "black", size = 14),
+      axis.title      = element_text(color = "black", size = 14),
+      axis.title.y    = element_text(margin = margin(r = 2)),
+      plot.margin     = margin(t = 5, r = 5, b = 5, l = 2),
+      legend.title    = element_text(size = 14, color = "black"),
+      legend.text     = element_text(size = 14, color = "black"),
+      legend.position = "bottom"
+    )
+}
+
+# AA left, DV middle, IS right with original species colors
+p_aa <- scatter_nb(validation_df, "Risk_aa_scaled", "aa_tbd_cases",
+                   m_nb_aa, "Amblyomma americanum", "#8C3B3B", show_legend = FALSE)
+p_dv <- scatter_nb(validation_df, "Risk_dv_scaled", "dv_tbd_cases",
+                   m_nb_dv, "Dermacentor variabilis", "#2F6B5F", show_legend = TRUE)
+p_is <- scatter_nb(validation_df, "Risk_is_scaled", "is_tbd_cases",
+                   m_nb_is, "Ixodes scapularis", "#264653", show_legend = FALSE)
+
+# Combine scatter panels — only DV shows its own legend, now plain circles
+combined_scatter_plot <- p_aa + p_dv + p_is +
+  plot_layout(ncol = 3)
+
+print(combined_scatter_plot)
+
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output"
+
+ggsave(file.path(out_dir, "validation_NB_forest_only.tiff"),
+       p_forest, width = 10, height = 4.5, dpi = 300, device = "tiff")
+
+ggsave(file.path(out_dir, "validation_NB_scatter_plot.tiff"),
+       combined_scatter_plot, width = 14, height = 10, dpi = 300, device = "tiff")
+
+```
+
+
+
+## Plotting Negative Binomial Results (Without Oulier)
+```{r}
+library(MASS)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# Import primary risk scores
+tbd_risk <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Vector-level risk/Vector_level_risk_scaled.csv"
+)
+
+# Import TBD incidence data
+tbd_inc <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_annual_average_incidence_scaled_vector.csv"
+)
+
+# Standardize county names and merge
+validation_df <- tbd_risk %>%
+  mutate(County = tolower(stringr::str_replace_all(County, " ", ""))) %>%
+  inner_join(
+    tbd_inc %>%
+      mutate(County = tolower(stringr::str_replace_all(County, " ", ""))),
+    by = "County"
+  )
+
+cat("Counties in validation dataset:", nrow(validation_df), "\n")
+
+
+# Identify top outlier county per species by incidence rate
+outlier_aa <- validation_df$County[which.max(validation_df$aa_tbd_cases / validation_df$population)]
+outlier_dv <- validation_df$County[which.max(validation_df$dv_tbd_cases / validation_df$population)]
+outlier_is <- validation_df$County[which.max(validation_df$is_tbd_cases / validation_df$population)]
+
+cat("AA outlier:", outlier_aa, "\n")
+cat("DV outlier:", outlier_dv, "\n")
+cat("IS outlier:", outlier_is, "\n")
+
+# Remove all identified outlier counties from validation dataset
+outliers <- unique(c(outlier_aa, outlier_dv, outlier_is))
+cat("Counties removed:", paste(outliers, collapse = ", "), "\n")
+
+validation_df <- validation_df %>%
+  dplyr::filter(!County %in% outliers)
+
+cat("Counties remaining after outlier removal:", nrow(validation_df), "\n")
+
+# Ixodes scapularis NB regression
+m_nb_is <- glm.nb(is_tbd_cases ~ Risk_is_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+# Dermacentor variabilis NB regression
+m_nb_dv <- glm.nb(dv_tbd_cases ~ Risk_dv_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+# Amblyomma americanum NB regression
+m_nb_aa <- glm.nb(aa_tbd_cases ~ Risk_aa_scaled + offset(log(population)),
+                  data = validation_df,
+                  init.theta = 0.5, maxit = 100)
+
+# Forest plot data
+# Order: AA top, DV middle, IS bottom to match scatter left to right
+forest_df <- data.frame(
+  Species = c("Amblyomma americanum",
+              "Dermacentor variabilis",
+              "Ixodes scapularis"),
+
+  IRR = c(
+    exp(coef(m_nb_aa)["Risk_aa_scaled"] * 0.2),
+    exp(coef(m_nb_dv)["Risk_dv_scaled"] * 0.2),
+    exp(coef(m_nb_is)["Risk_is_scaled"] * 0.2)
+  ),
+
+  lower = c(
+    exp(confint(m_nb_aa)["Risk_aa_scaled", 1] * 0.2),
+    exp(confint(m_nb_dv)["Risk_dv_scaled", 1] * 0.2),
+    exp(confint(m_nb_is)["Risk_is_scaled", 1] * 0.2)
+  ),
+
+  upper = c(
+    exp(confint(m_nb_aa)["Risk_aa_scaled", 2] * 0.2),
+    exp(confint(m_nb_dv)["Risk_dv_scaled", 2] * 0.2),
+    exp(confint(m_nb_is)["Risk_is_scaled", 2] * 0.2)
+  ),
+
+  p_val = c(
+    coef(summary(m_nb_aa))["Risk_aa_scaled", "Pr(>|z|)"],
+    coef(summary(m_nb_dv))["Risk_dv_scaled", "Pr(>|z|)"],
+    coef(summary(m_nb_is))["Risk_is_scaled", "Pr(>|z|)"]
+  )
+)
+
+forest_df <- forest_df %>%
+  mutate(
+    Species = factor(Species, levels = c("Ixodes scapularis",
+                                         "Dermacentor variabilis",
+                                         "Amblyomma americanum")),
+    sig_label = case_when(
+      p_val < 0.001 ~ "p < 0.001",
+      p_val < 0.01  ~ paste0("p = ", round(p_val, 3)),
+      TRUE          ~ paste0("p = ", round(p_val, 3))
+    ),
+    irr_label = paste0("IRR = ", round(IRR, 2),
+                       " (", round(lower, 2), "-", round(upper, 2), ")")
+  )
+
+# Forest plot
+p_forest <- ggplot(forest_df, aes(y = Species, x = IRR, color = Species)) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "gray50", linewidth = 0.6) +
+  geom_errorbarh(aes(xmin = lower, xmax = upper),
+                 height = 0.15, linewidth = 0.8) +
+  geom_point(size = 4, shape = 18) +
+  geom_text(aes(label = irr_label, x = upper),
+            hjust = -0.08, size = 4.5, color = "black") +
+  geom_text(aes(label = sig_label, x = lower),
+            hjust = 1.08, size = 4, color = "black", fontface = "italic") +
+ scale_color_manual(values = c(
+ "Ixodes scapularis"      = "#264653",
+ "Dermacentor variabilis" = "#2F6B5F",
+ "Amblyomma americanum"   = "#8C3B3B"
+)) +
+  scale_y_discrete(labels = c(
+    "Ixodes scapularis"      = expression(italic("I. scapularis")),
+    "Dermacentor variabilis" = expression(italic("D. variabilis")),
+    "Amblyomma americanum"   = expression(italic("A. americanum"))
+  )) +
+  scale_x_log10(
+    breaks = c(0.1, 1, 10, 100),
+    labels = c("0.1", "1", "10", "100"),
+    limits = c(0.05, 100)
+  )+
+  labs(
+    x     = "Incidence rate ratio",
+    y     = NULL
+  ) +
+  theme_classic(base_size = 16) +
+  theme(
+    legend.position    = "none",
+    axis.text          = element_text(color = "black", size = 14),
+    axis.title         = element_text(color = "black", size = 14),
+    plot.title         = element_text(face = "bold", size = 16, color = "black"),
+    panel.grid.major.x = element_line(color = "gray92", linewidth = 0.4)
+  )
+
+print(p_forest)
+
+# Scatter plot function with optional y-axis label and optional legend
+scatter_nb <- function(data, risk_col, case_col, model, species_label, dot_color, show_legend = TRUE) {
+  pred_df <- data.frame(
+    risk       = seq(min(data[[risk_col]], na.rm = TRUE),
+                     max(data[[risk_col]], na.rm = TRUE),
+                     length.out = 200),
+    population = mean(data$population)
+  )
+  names(pred_df)[1] <- risk_col
+  pred_df$fitted <- predict(model,
+                            newdata = pred_df,
+                            type = "response") / mean(data$population) * 100000
+  obs_df <- data %>%
+    mutate(
+      obs_inc = .data[[case_col]] / population * 100000,
+      risk    = .data[[risk_col]]
+    )
+  ggplot() +
+    geom_point(data = obs_df,
+               aes(x = risk, y = obs_inc, size = population),
+               fill = dot_color, color = "black", alpha = 0.55, shape = 21,
+               stroke = 0.3,
+               show.legend = show_legend) +
+    geom_line(data = pred_df,
+              aes(x = .data[[risk_col]], y = fitted),
+              color = "black", linewidth = 0.9) +
+    scale_size_continuous(
+      name   = "Population",
+      range  = c(1, 6),
+      labels = scales::comma,
+      guide  = guide_legend(override.aes = list(fill = "white", color = "black", stroke = 0.6))
+    )  +
+    guides(fill = "none") +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    labs(
+      title = bquote(italic(.(species_label))),
+      x     = "Risk score",
+      y     = if (species_label == "Amblyomma americanum") "Incidence per 100,000" else NULL
+    ) +
+    theme_classic(base_size = 16) +
+    theme(
+      plot.title      = element_text(hjust = 0.5, size = 16,
+                                     face = "italic", color = "black"),
+      axis.text       = element_text(color = "black", size = 14),
+      axis.title      = element_text(color = "black", size = 14),
+      axis.title.y    = element_text(margin = margin(r = 2)),
+      plot.margin     = margin(t = 5, r = 5, b = 5, l = 2),
+      legend.title    = element_text(size = 14, color = "black"),
+      legend.text     = element_text(size = 14, color = "black"),
+      legend.position = "bottom"
+    )
+}
+
+# AA left, DV middle, IS right with original species colors
+p_aa <- scatter_nb(validation_df, "Risk_aa_scaled", "aa_tbd_cases",
+                   m_nb_aa, "Amblyomma americanum", "#8C3B3B", show_legend = FALSE)
+p_dv <- scatter_nb(validation_df, "Risk_dv_scaled", "dv_tbd_cases",
+                   m_nb_dv, "Dermacentor variabilis", "#2F6B5F", show_legend = TRUE)
+p_is <- scatter_nb(validation_df, "Risk_is_scaled", "is_tbd_cases",
+                   m_nb_is, "Ixodes scapularis", "#264653", show_legend = FALSE)
+
+# Combine scatter panels — only DV shows its own legend, now plain circles
+combined_scatter_plot <- p_aa + p_dv + p_is +
+  plot_layout(ncol = 3)
+
+print(combined_scatter_plot)
+
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output"
+
+ggsave(file.path(out_dir, "validation_NB_forest_only_NO_OUTLIER.tiff"),
+       p_forest, width = 10, height = 4.5, dpi = 300, device = "tiff")
+
+ggsave(file.path(out_dir, "validation_NB_scatter_plotNO_OUTLIER.tiff"),
+       combined_scatter_plot, width = 14, height = 10, dpi = 300, device = "tiff")
+
+```
+
+
+
+## Receiver Operating Characteristic (ROC) analysis using the Area Under the Curve (AUC)
+```{r}
+library(pROC)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+
+# Dichotomize counties by disease presence (≥1 case vs 0 cases)
+validation_df <- validation_df %>%
+  mutate(
+burden_is = ifelse(is_tbd_cases > 0, 1, 0),
+burden_dv = ifelse(dv_tbd_cases > 0, 1, 0),
+burden_aa = ifelse(aa_tbd_cases > 0, 1, 0)
+  )
+
+# ROC and AUC for each species
+roc_is <- roc(validation_df$burden_is, validation_df$Risk_is_scaled)
+roc_dv <- roc(validation_df$burden_dv, validation_df$Risk_dv_scaled)
+roc_aa <- roc(validation_df$burden_aa, validation_df$Risk_aa_scaled)
+
+cat("IS AUC:", auc(roc_is), "\n")
+cat("DV AUC:", auc(roc_dv), "\n")
+cat("AA AUC:", auc(roc_aa), "\n")
+
+cat("IS AUC 95% CI:", ci.auc(roc_is), "\n")
+cat("DV AUC 95% CI:", ci.auc(roc_dv), "\n")
+cat("AA AUC 95% CI:", ci.auc(roc_aa), "\n")
+
+# Build ROC curve dataframes for ggplot
+roc_to_df <- function(roc_obj, species) {
+  data.frame(
+    FPR     = 1 - roc_obj$specificities,
+    TPR     = roc_obj$sensitivities,
+    Species = species
+  )
+}
+
+roc_df <- bind_rows(
+  roc_to_df(roc_aa, "Amblyomma americanum"),
+  roc_to_df(roc_dv, "Dermacentor variabilis"),
+  roc_to_df(roc_is, "Ixodes scapularis")
+)
+
+# AUC label dataframe
+auc_labels <- data.frame(
+  Species = c("Amblyomma americanum", "Dermacentor variabilis", "Ixodes scapularis"),
+  AUC     = c(as.numeric(auc(roc_aa)),
+              as.numeric(auc(roc_dv)),
+              as.numeric(auc(roc_is))),
+  CI_low  = c(ci.auc(roc_aa)[1], ci.auc(roc_dv)[1], ci.auc(roc_is)[1]),
+  CI_high = c(ci.auc(roc_aa)[3], ci.auc(roc_dv)[3], ci.auc(roc_is)[3])
+) %>%
+  mutate(
+    label = paste0("AUC = ", round(AUC, 3),
+                   " (", round(CI_low, 3), "-", round(CI_high, 3), ")")
+  )
+
+# ROC plot function per species
+plot_roc <- function(df, species_name, line_color, auc_df) {
+
+  auc_label <- auc_df %>% filter(Species == species_name) %>% pull(label)
+
+  df %>%
+    filter(Species == species_name) %>%
+    arrange(FPR) %>%
+    ggplot(aes(x = FPR, y = TPR)) +
+    geom_abline(slope = 1, intercept = 0,
+                linetype = "dashed", color = "gray50", linewidth = 0.6) +
+    geom_line(color = line_color, linewidth = 1.1) +
+    geom_ribbon(aes(ymin = 0, ymax = TPR),
+                fill = line_color, alpha = 0.12) +
+    annotate("text",
+            x = 0.05, y = 0.93,
+             label = auc_label,
+             size = 4, color = "black", hjust = 0) +
+    labs(
+      title = bquote(italic(.(species_name))),
+      x     = "1 - Specificity (False Positive Rate)",
+      y     = "Sensitivity (True Positive Rate)"
+    ) +
+    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    theme_classic(base_size = 10) +
+    theme(
+      plot.title  = element_text(hjust = 0.5, size = 16,
+                                 face = "italic", color = "black"),
+      axis.text   = element_text(color = "black", size = 14),
+      axis.title.x = element_text(color = "black", size = 14, face = "bold"),
+  axis.title.y = element_text(color = "black", size = 14, face = "bold")
+)
+}
+
+p_roc_aa <- plot_roc(roc_df, "Amblyomma americanum",   "#8C3B3B", auc_labels)
+p_roc_dv <- plot_roc(roc_df, "Dermacentor variabilis", "#2F6B5F", auc_labels)
+p_roc_is <- plot_roc(roc_df, "Ixodes scapularis",      "#264653", auc_labels)
+
+# Combine panels AA left DV middle IS right
+roc_panel <- p_roc_aa + p_roc_dv + p_roc_is +
+  plot_layout(ncol = 3) 
+
+print(roc_panel)
+
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output"
+
+ggsave(file.path(out_dir, "validation_ROC.tiff"),
+       roc_panel, width = 14, height = 5.5, dpi = 300, device = "tiff")
+
+message("Saved: ROC_validation.tiff")
+```

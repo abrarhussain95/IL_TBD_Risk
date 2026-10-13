@@ -1,0 +1,2007 @@
+---
+title: "Seasonality"
+author: "Abrar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## aa time plot
+```{r}
+
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+select <- dplyr::select  
+# Import the CSV file
+df <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/Temporal Data/aa.csv"
+)
+
+# Create date variable
+df <- df %>%
+  mutate(
+    date = as.Date(paste(disease_year, disease_month, "01", sep = "-"))
+  )
+
+# Aggregate monthly cases
+monthly_cases <- df %>%
+  group_by(date) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE))
+
+# Final publication-quality plot
+aa <- ggplot(monthly_cases, aes(x = date, y = total_cases)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  geom_point(color = "black", size = 2) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  labs(
+    x = "Year",
+  y = expression(bold("Cases by " * italic("A. americanum")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title.x = element_text(color = "black", face = "bold", size = 16),
+    axis.title.y = element_text(color = "black", face = "bold", size = 16)
+  )
+
+print(aa)
+
+
+# Aggregate cases by month (across all years)
+month_cases <- df %>%
+  group_by(disease_year, disease_month) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(disease_year, disease_month)
+
+# Smooth seasonal curve WITH points from all years
+aa_smooth <- ggplot(month_cases, aes(x = disease_month, y = total_cases)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    color = "firebrick",
+    linewidth = 1.2,
+    span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = c("Jan","Feb","Mar","Apr","May","Jun",
+               "Jul","Aug","Sep","Oct","Nov","Dec"),
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Cases by " * italic("A. americanum")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(size = 16, color = "black", face = "bold")
+  )
+
+print(aa_smooth)
+
+
+
+### Aggregate cases by Month in data frame formate
+
+monthly_tbd_aa <- df %>%
+  group_by(disease_month) %>%
+  summarise(aa_tbd = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  right_join(
+    data.frame(disease_month = 1:12),
+    by = "disease_month"
+  ) %>%
+  mutate(
+    aa_tbd = ifelse(is.na(aa_tbd), 0, aa_tbd),
+    Month = factor(disease_month,
+                   levels = 1:12,
+                   labels = c("Jan","Feb","Mar","Apr","May","Jun",
+                              "Jul","Aug","Sep","Oct","Nov","Dec"))
+  ) %>%
+  arrange(disease_month) %>%
+  select(Month, aa_tbd)
+
+monthly_tbd_aa
+#View(monthly_tbd_aa)
+
+```
+
+
+
+## dv time plot
+```{r}
+
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Import the CSV file
+df <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/Temporal Data/dv.csv"
+)
+
+# Create date variable
+df <- df %>%
+  mutate(
+    date = as.Date(paste(disease_year, disease_month, "01", sep = "-"))
+  )
+
+# Aggregate monthly cases
+monthly_cases <- df %>%
+  group_by(date) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE))
+
+# Final publication-quality plot
+dv <- ggplot(monthly_cases, aes(x = date, y = total_cases)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  geom_point(color = "black", size = 2) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  labs(
+    x = "Year",
+    y = expression(bold("Cases by " * italic("D. variabillis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title.x = element_text(color = "black", face = "bold", size = 16),
+    axis.title.y = element_text(color = "black", face = "bold", size = 16)
+  )
+
+print(dv)
+
+# Aggregate cases by month (across all years)
+month_cases <- df %>%
+  group_by(disease_year, disease_month) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(disease_year, disease_month)
+
+# Smooth seasonal curve WITH points from all years
+dv_smooth <- ggplot(month_cases, aes(x = disease_month, y = total_cases)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    color = "firebrick",
+    linewidth = 1.2,
+    span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = c("Jan","Feb","Mar","Apr","May","Jun",
+               "Jul","Aug","Sep","Oct","Nov","Dec"),
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Cases by " * italic("D. variabillis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(size = 16, color = "black", face = "bold")
+  )
+
+print(dv_smooth)
+
+
+### Aggregate cases by Month in data frame formate
+
+monthly_tbd_dv <- df %>%
+  group_by(disease_month) %>%
+  summarise(dv_tbd = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  right_join(
+    data.frame(disease_month = 1:12),
+    by = "disease_month"
+  ) %>%
+  mutate(
+    dv_tbd = ifelse(is.na(dv_tbd), 0, dv_tbd),
+    Month = factor(disease_month,
+                   levels = 1:12,
+                   labels = c("Jan","Feb","Mar","Apr","May","Jun",
+                              "Jul","Aug","Sep","Oct","Nov","Dec"))
+  ) %>%
+  arrange(disease_month) %>%
+  select(Month, dv_tbd)
+
+monthly_tbd_dv
+#View(monthly_tbd_dv)
+
+```
+
+
+## is time plot
+```{r}
+
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Import the CSV file
+df <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/Temporal Data/is.csv"
+)
+
+# Create date variable
+df <- df %>%
+  mutate(
+    date = as.Date(paste(disease_year, disease_month, "01", sep = "-"))
+  )
+
+# Aggregate monthly cases
+monthly_cases <- df %>%
+  group_by(date) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE))
+
+# Final publication-quality plot
+is <- ggplot(monthly_cases, aes(x = date, y = total_cases)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  geom_point(color = "black", size = 2) +
+  scale_x_date(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  labs(
+    x = "Year",
+    y = expression(bold("Cases by " * italic("I. scapularis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title.x = element_text(color = "black", face = "bold", size = 16),
+    axis.title.y = element_text(color = "black", face = "bold", size = 16)
+  )
+
+print(is)
+
+
+# Aggregate cases by month (across all years)
+month_cases <- df %>%
+  group_by(disease_year, disease_month) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(disease_year, disease_month)
+
+# Smooth seasonal curve WITH points from all years
+is_smooth <- ggplot(month_cases, aes(x = disease_month, y = total_cases)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    color = "firebrick",
+    linewidth = 1.2,
+    span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = c("Jan","Feb","Mar","Apr","May","Jun",
+               "Jul","Aug","Sep","Oct","Nov","Dec"),
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Cases by " * italic("I. scapularis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(size = 16, color = "black", face = "bold")
+  )
+
+print(is_smooth)
+
+
+### Aggregate cases by Month in data frame formate
+
+monthly_tbd_is <- df %>%
+  group_by(disease_month) %>%
+  summarise(is_tbd = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  right_join(
+    data.frame(disease_month = 1:12),
+    by = "disease_month"
+  ) %>%
+  mutate(
+    is_tbd = ifelse(is.na(is_tbd), 0, is_tbd),
+    Month = factor(disease_month,
+                   levels = 1:12,
+                   labels = c("Jan","Feb","Mar","Apr","May","Jun",
+                              "Jul","Aug","Sep","Oct","Nov","Dec"))
+  ) %>%
+  arrange(disease_month) %>%
+  select(Month, is_tbd)
+
+monthly_tbd_is
+#View(monthly_tbd_is)
+
+```
+
+
+## Climate DATA
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+
+base  <- "https://www.ncei.noaa.gov/data/nclimgrid-daily/access/averages"
+years <- 2019:2022
+
+read_month_il <- function(var, year, month){
+  ym  <- sprintf("%04d%02d", year, month)
+  url <- sprintf("%s/%04d/%s-%s-ste-scaled.csv", base, year, var, ym)
+
+  x <- read_csv(url, show_col_types = FALSE, name_repair = "minimal")
+  names(x)[1:6] <- c("region_type","region_code","region_name","year","month","variable")
+
+  il <- x[x$region_name == "Illinois", ]
+  if (nrow(il) == 0) stop("Illinois row not found in: ", url)
+
+  # day columns = everything after first 6 cols
+  day_mat <- il[, 7:ncol(il), drop = FALSE]
+
+  # pivot with column index -> day number (robust even if names are messed up)
+  out <- tibble(
+    day = seq_len(ncol(day_mat)),
+    value = as.numeric(day_mat[1, ])
+  ) %>%
+    mutate(
+      date = make_date(year = year, month = month, day = day),
+      !!var := ifelse(value <= -999, NA_real_, value)
+    ) %>%
+    select(date, all_of(var))
+
+  out
+}
+
+tavg_daily <- bind_rows(lapply(years, \(y) bind_rows(lapply(1:12, \(m) read_month_il("tavg", y, m)))))
+prcp_daily <- bind_rows(lapply(years, \(y) bind_rows(lapply(1:12, \(m) read_month_il("prcp", y, m)))))
+
+daily <- full_join(tavg_daily, prcp_daily, by = "date") %>%
+  arrange(date) %>%
+  filter(date >= as.Date("2019-01-01"), date <= as.Date("2022-12-31"))
+
+write_csv(
+  daily,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_temp_prcp_2019_2022.csv"
+)
+
+daily
+
+####AVERGAE DAILY COMBINED OF 4 YEARS#######
+
+library(dplyr)
+library(lubridate)
+library(readr)
+
+df <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_temp_prcp_2019_2022.csv",
+  show_col_types = FALSE
+)
+
+# robust date parse: handle "1/1/2019" or "2019-01-01" etc.
+df <- df %>%
+  mutate(
+    date_chr = as.character(date),
+    date = suppressWarnings(parse_date_time(date_chr, orders = c("mdy", "ymd", "m/d/Y", "Y-m-d")))
+  ) %>%
+  filter(!is.na(date)) %>%
+  select(-date_chr)
+
+# 365-row average by calendar day across 2019-2022 (drop Feb 29)
+daily_365 <- df %>%
+  mutate(mmdd = format(as.Date(date), "%m-%d")) %>%
+  filter(mmdd != "02-29") %>%
+  group_by(mmdd) %>%
+  summarise(
+    tavg_C_mean  = mean(tavg, na.rm = TRUE),
+    prcp_mm_mean = mean(prcp, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(fake_date = as.Date(paste0("2019-", mmdd), format = "%Y-%m-%d")) %>%
+  arrange(fake_date) %>%
+  select(mmdd, tavg_C_mean, prcp_mm_mean)
+
+write_csv(
+  daily_365,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_365avg_2019_2022.csv"
+)
+
+daily_365
+
+```
+
+
+###Combine temp. and prcp data with RH data (extracted in seprate code file)
+```{r}
+library(readr)
+library(dplyr)
+
+temp_prcp <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_365avg_2019_2022.csv",
+  show_col_types = FALSE
+)
+
+rh <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_rh_365avg_2019_2022.csv",
+  show_col_types = FALSE
+)
+
+names(temp_prcp)
+names(rh)
+
+head(temp_prcp$mmdd, 10)
+head(rh$mmdd, 10)
+
+
+# convert "1-Jan" -> "01-01" etc.
+rh_fix <- rh %>%
+  mutate(
+    mmdd = format(as.Date(paste0("2019-", mmdd), format = "%Y-%d-%b"), "%m-%d")
+  )
+
+# now join
+climate_365 <- temp_prcp %>%
+  left_join(rh_fix, by = "mmdd")
+
+# check
+sum(is.na(climate_365$rh_mean))   # should be 0
+head(climate_365)
+
+
+write_csv(
+  climate_365,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_climate.csv"
+)
+
+```
+
+##Plot climate data
+```{r}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+
+clim <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_climate.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(fake_date = as.Date(paste0("2019-", mmdd))) %>%
+  arrange(fake_date)
+
+# scale precip onto temp axis (for dual axis)
+t_range <- range(clim$tavg_C_mean, na.rm = TRUE)
+p_range <- range(clim$prcp_mm_mean, na.rm = TRUE)
+
+scale_factor <- diff(t_range) / diff(p_range)
+offset       <- t_range[1] - p_range[1] * scale_factor
+
+clim <- clim %>% mutate(prcp_scaled = prcp_mm_mean * scale_factor + offset)
+
+p <- ggplot(clim, aes(x = fake_date)) +
+  geom_col(aes(y = prcp_mm_mean), fill = "goldenrod", width = 1) +
+  geom_line(aes(y = tavg_C_mean), color = "firebrick", linewidth = 0.8) +
+  scale_x_date(
+  name = "Month",
+  limits = as.Date(c("2019-01-01", "2019-12-31")),  # <-- force Jan–Dec only
+  date_breaks = "1 month",
+  date_labels = "%b",
+  expand = c(0, 0)                                  # <-- no extra padding
+  ) +
+  scale_y_continuous(
+    name = "Precipitation (mm)",
+    sec.axis = sec_axis(~ (. - offset) / scale_factor,
+                        name = "Temperature (°C)")
+  ) +
+  theme_classic(base_size = 16) +
+  theme(
+    axis.title.x = element_text(face = "bold", size = 16, colour = "black"),
+    axis.title.y.left  = element_text(face = "bold", size = 16, colour = "black"),
+    axis.title.y.right = element_text(face = "bold", size = 16, colour = "black"),
+
+    axis.text.x = element_text(size = 14, colour = "black", face = "plain"),
+    axis.text.y = element_text(size = 14, colour = "black"),
+    axis.line = element_blank(),
+    panel.border = element_rect(fill = NA, colour = "black", linewidth = 1.2),
+    legend.position = "none"
+  )
+
+# add a small manual key (top-left)
+temp_prec_Plot <- p +
+  annotate("segment",
+           x = min(clim$fake_date) + 10, xend = min(clim$fake_date) + 35,
+           y = max(clim$prcp_mm_mean, na.rm = TRUE) * 2,   # moved up
+           yend = max(clim$prcp_mm_mean, na.rm = TRUE) * 2,
+           colour = "firebrick", linewidth = 1.2) +
+  annotate("text",
+           x = min(clim$fake_date) + 40,
+           y = max(clim$prcp_mm_mean, na.rm = TRUE) * 2,
+           label = "Temperature",
+           hjust = 0, size = 6, colour = "black", fontface = "bold") +
+  annotate("segment",
+           x = min(clim$fake_date) + 10, xend = min(clim$fake_date) + 35,
+           y = max(clim$prcp_mm_mean, na.rm = TRUE) * 1.85,   # moved up
+           yend = max(clim$prcp_mm_mean, na.rm = TRUE) * 1.85,
+           colour = "goldenrod", linewidth = 1.2) +
+  annotate("text",
+           x = min(clim$fake_date) + 40,
+           y = max(clim$prcp_mm_mean, na.rm = TRUE) * 1.85,
+           label = "Precipitation",
+           hjust = 0, size = 6, colour = "black", fontface = "bold")
+
+ggsave(
+  "Illinois_Climatology_Temp_Precip_2019_2022.png",
+  temp_prec_Plot,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+print(temp_prec_Plot)
+
+```
+
+
+## Making RH plots
+```{r}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+
+clim <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_climate.csv",
+  show_col_types = FALSE
+) %>%
+  mutate(fake_date = as.Date(paste0("2019-", mmdd))) %>%
+  arrange(fake_date)
+
+
+
+rh_plot <- ggplot(clim, aes(x = fake_date, y = rh_mean)) +
+  geom_line(linewidth = 0.9) +
+  scale_x_date(
+    name = "Month",
+    limits = as.Date(c("2019-01-01", "2019-12-31")),
+    date_breaks = "1 month",
+    date_labels = "%b",
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(name = "Relative Humidity (%)", limits = c(0, 100)) +
+  theme_classic(base_size = 16) +
+  theme(
+    axis.title.x = element_text(face = "bold", size = 16, colour = "black"),
+    axis.title.y = element_text(face = "bold", size = 16, colour = "black"),
+    axis.text.x  = element_text(size = 11, colour = "black"),
+    axis.text.y  = element_text(size = 11, colour = "black"),
+    axis.line    = element_line(linewidth = 1.2, colour = "black")
+  )
+
+print(rh_plot)
+
+ggsave(
+  "Illinois_Climatology_RH_2019_2022.png",
+  rh_plot,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+```
+
+
+
+## Pannel Plot combining temprature and precip
+```{r}
+library(patchwork)
+
+combine_panel_plot <- (aa_smooth | dv_smooth) /
+              (is_smooth | temp_prec_Plot) +
+  plot_layout(widths = c(1, 1))
+
+ggsave(
+  filename = "Combine_Seasonal_Smooth_Panel.png",
+  plot = combine_panel_plot,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+print(combine_panel_plot)
+
+
+```
+
+
+
+#####TICK BITE DATA######
+
+##aa_exp
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Import the tick exposure CSV file
+aa_exp <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick bite/Temporal Data/aa_exp.csv",
+  stringsAsFactors = FALSE
+)
+
+# Make sure types are correct + create monthly date
+aa_exp <- aa_exp %>%
+  mutate(
+    year  = as.integer(year),
+    month = as.integer(month),
+    count = as.numeric(count),
+    month_date = as.Date(paste(year, month, "01", sep = "-"))
+  ) %>%
+  filter(!is.na(month_date), !is.na(count))
+
+
+## Time-series plot by Year (monthly totals)
+
+monthly_exp <- aa_exp %>%
+  group_by(month_date) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(month_date)
+
+aa_exp_ts <- ggplot(monthly_exp, aes(x = month_date, y = total_cases)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  geom_point(color = "black", size = 2) +
+  scale_x_date(
+    limits = as.Date(c("2019-01-01", "2022-12-31")),
+    breaks = seq(as.Date("2019-01-01"), as.Date("2022-01-01"), by = "1 year"),
+    date_labels = "%Y",
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Year",
+    y = expression(bold("Tick bites by " * italic("D. variabillis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 11),
+    axis.title.x = element_text(color = "black", face = "bold", size = 16),
+    axis.title.y = element_text(color = "black", face = "bold", size = 16)
+  )
+
+print(aa_exp_ts)
+
+
+## Seasonal plot (keep every year-month point) + loess smooth
+
+month_cases <- aa_exp %>%
+  group_by(year, month) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(year, month)
+
+aa_exp_smooth <- ggplot(month_cases, aes(x = month, y = total_cases)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    color = "firebrick",
+    linewidth = 1.2,
+    span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = c("Jan","Feb","Mar","Apr","May","Jun",
+               "Jul","Aug","Sep","Oct","Nov","Dec"),
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Tick bites by " * italic("A. americanum")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(face = "bold", size = 16, color = "black")
+  )
+
+print(aa_exp_smooth)
+
+
+
+## Aggregating by month for dataframe
+
+aa_exp_monthly <- aa_exp %>%
+  group_by(month) %>%
+  summarise(aa_exp = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  right_join(
+    data.frame(month = 1:12),
+    by = "month"
+  ) %>%
+  mutate(
+    aa_exp = ifelse(is.na(aa_exp), 0, aa_exp),
+    Month = factor(month,
+                   levels = 1:12,
+                   labels = c("Jan","Feb","Mar","Apr","May","Jun",
+                              "Jul","Aug","Sep","Oct","Nov","Dec"))
+  ) %>%
+  arrange(month) %>%
+  select(Month, aa_exp)
+
+aa_exp_monthly
+#View(aa_exp_monthly)
+```
+
+
+
+##dv_exp
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Import the tick exposure CSV file
+dv_exp <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick bite/Temporal Data/dv_exp.csv",
+  stringsAsFactors = FALSE
+)
+
+# Make sure types are correct + create monthly date
+dv_exp <- dv_exp %>%
+  mutate(
+    year  = as.integer(year),
+    month = as.integer(month),
+    count = as.numeric(count),
+    month_date = as.Date(paste(year, month, "01", sep = "-"))
+  ) %>%
+  filter(!is.na(month_date), !is.na(count))
+
+
+##Time-series plot by Year (monthly totals)
+
+monthly_exp <- dv_exp %>%
+  group_by(month_date) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(month_date)
+
+dv_exp_ts <- ggplot(monthly_exp, aes(x = month_date, y = total_cases)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  geom_point(color = "black", size = 2) +
+  scale_x_date(
+  limits = as.Date(c("2019-01-01", "2022-12-31")),
+  breaks = seq(as.Date("2019-01-01"), as.Date("2022-01-01"), by = "1 year"),
+  date_labels = "%Y",
+  expand = c(0, 0)
+) +
+  labs(
+    x = "Year",
+    y = expression(bold("Tick bites by " * italic("D. variabillis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line   = element_line(color = "black", linewidth = 1),
+    axis.text   = element_text(color = "black", size = 11),
+    axis.title.x = element_text(color = "black", face = "bold", size = 16),
+    axis.title.y = element_text(color = "black", face = "bold", size = 16)
+  )
+
+print(dv_exp_ts)
+
+
+## Seasonal plot (keep every year-month point) + loess smooth
+
+month_cases <- dv_exp %>%
+  group_by(year, month) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(year, month)
+
+dv_exp_smooth <- ggplot(month_cases, aes(x = month, y = total_cases)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    color = "firebrick",
+    linewidth = 1.2,
+    span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = c("Jan","Feb","Mar","Apr","May","Jun",
+               "Jul","Aug","Sep","Oct","Nov","Dec"),
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Tick bites by " * italic("D. variabillis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line   = element_line(color = "black", linewidth = 1),
+    axis.text   = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(face = "bold", size = 16, color = "black")
+  )
+
+print(dv_exp_smooth)
+
+
+## Aggregating by month for dataframe
+
+dv_exp_monthly <- dv_exp %>%
+  group_by(month) %>%
+  summarise(dv_exp = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  right_join(
+    data.frame(month = 1:12),
+    by = "month"
+  ) %>%
+  mutate(
+    dv_exp = ifelse(is.na(dv_exp), 0, dv_exp),
+    Month = factor(month,
+                   levels = 1:12,
+                   labels = c("Jan","Feb","Mar","Apr","May","Jun",
+                              "Jul","Aug","Sep","Oct","Nov","Dec"))
+  ) %>%
+  arrange(month) %>%
+  select(Month, dv_exp)
+
+dv_exp_monthly
+#View(dv_exp_monthly)
+
+```
+
+
+
+
+
+##is_exp
+```{r}
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+# Import the tick exposure CSV file
+is_exp <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick bite/Temporal Data/is_exp.csv",
+  stringsAsFactors = FALSE
+)
+
+# Make sure types are correct + create monthly date
+is_exp <- is_exp %>%
+  mutate(
+    year  = as.integer(year),
+    month = as.integer(month),
+    count = as.numeric(count),
+    month_date = as.Date(paste(year, month, "01", sep = "-"))
+  ) %>%
+  filter(!is.na(month_date), !is.na(count))
+
+
+## Time-series plot by Year (monthly totals)
+
+monthly_exp <- is_exp %>%
+  group_by(month_date) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(month_date)
+
+is_exp_ts <- ggplot(monthly_exp, aes(x = month_date, y = total_cases)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  geom_point(color = "black", size = 2) +
+  scale_x_date(
+    limits = as.Date(c("2019-01-01", "2022-12-31")),
+    breaks = seq(as.Date("2019-01-01"), as.Date("2022-01-01"), by = "1 year"),
+    date_labels = "%Y",
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Year",
+    y = expression(bold("Tick bites by " * italic("I. scapularis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 11),
+    axis.title.x = element_text(color = "black", face = "bold", size = 16),
+    axis.title.y = element_text(color = "black", face = "bold", size = 16)
+  )
+
+print(is_exp_ts)
+
+
+## Seasonal plot (keep every year-month point) + loess smooth
+
+month_cases <- is_exp %>%
+  group_by(year, month) %>%
+  summarise(total_cases = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  arrange(year, month)
+
+is_exp_smooth <- ggplot(month_cases, aes(x = month, y = total_cases)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    color = "firebrick",
+    linewidth = 1.2,
+    span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = c("Jan","Feb","Mar","Apr","May","Jun",
+               "Jul","Aug","Sep","Oct","Nov","Dec"),
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Tick bites by " * italic("I. scapularis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(face = "bold", size = 16, color = "black")
+  )
+
+print(is_exp_smooth)
+
+
+## Aggregating by month for dataframe
+
+is_exp_monthly <- is_exp %>%
+  group_by(month) %>%
+  summarise(is_exp = sum(count, na.rm = TRUE), .groups = "drop") %>%
+  right_join(
+    data.frame(month = 1:12),
+    by = "month"
+  ) %>%
+  mutate(
+    is_exp = ifelse(is.na(is_exp), 0, is_exp),
+    Month = factor(month,
+                   levels = 1:12,
+                   labels = c("Jan","Feb","Mar","Apr","May","Jun",
+                              "Jul","Aug","Sep","Oct","Nov","Dec"))
+  ) %>%
+  arrange(month) %>%
+  select(Month, is_exp)
+
+is_exp_monthly
+#View(is_exp_monthly)
+
+```
+
+## Pannel exposure Plot
+```{r}
+library(patchwork)
+
+exp_panel_plot <- (aa_exp_smooth | dv_exp_smooth) /
+              (is_exp_smooth | plot_spacer()) +
+  plot_layout(widths = c(1, 1))
+
+ggsave(
+  filename = "Exposure_Seasonal_Smooth_Panel.png",
+  plot = exp_panel_plot,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+print(exp_panel_plot)
+
+
+###PLOT exposure with Temp and Precip.
+
+exp_clim_panel_plot <- (aa_exp_smooth | dv_exp_smooth) /
+              (is_exp_smooth | temp_prec_Plot) +
+  plot_layout(widths = c(1, 1))
+
+ggsave(
+  filename = "Exposure_Seasonal_Smooth_Panel.png",
+  plot = exp_clim_panel_plot,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+print(exp_clim_panel_plot)
+
+
+```
+
+
+
+
+
+##### Sampled Tick abundance #######
+
+## Tick sampled IDPH
+```{r}
+## Tick Sampled Panel (IDPH ADAT)
+library(dplyr)
+library(ggplot2)
+
+# Read data
+tick_samp <- read.csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/IDPH/Orignal files/Temporal data/tick_collections_all.csv",
+  stringsAsFactors = FALSE
+)
+
+# Make month numeric for plotting
+month_levels <- c("Jan","Feb","Mar","Apr","May","Jun",
+                  "Jul","Aug","Sep","Oct","Nov","Dec")
+
+tick_samp <- tick_samp %>%
+  mutate(month_num = match(month, month_levels))
+
+#  aa_total 
+aa_samp_smooth <- ggplot(tick_samp, aes(x = month_num, y = aa_total)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess", se = FALSE,
+    color = "firebrick", linewidth = 1.2, span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = month_levels,
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Sampled " * italic("A. americanum")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(face = "bold", size = 16, color = "black")
+  )
+
+# dv_total 
+dv_samp_smooth <- ggplot(tick_samp, aes(x = month_num, y = dv_total)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess", se = FALSE,
+    color = "firebrick", linewidth = 1.2, span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = month_levels,
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Sampled " * italic("D. variabilis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(face = "bold", size = 16, color = "black")
+  )
+
+# is_total 
+is_samp_smooth <- ggplot(tick_samp, aes(x = month_num, y = is_total)) +
+  geom_point(color = "black", size = 2) +
+  geom_smooth(
+    method = "loess", se = FALSE,
+    color = "firebrick", linewidth = 1.2, span = 0.6
+  ) +
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = month_levels,
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  labs(
+    x = "Month",
+    y = expression(bold("Sampled " * italic("I. scapularis")))
+  ) +
+  theme_classic() +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 11),
+    axis.title.x = element_text(face = "bold", size = 16, color = "black"),
+    axis.title.y = element_text(face = "bold", size = 16, color = "black")
+  )
+
+#  Panel 
+library(patchwork)
+
+samp_panel_plot <- (aa_samp_smooth | dv_samp_smooth) /
+                   (is_samp_smooth | temp_prec_Plot) +
+  plot_layout(widths = c(1, 1))
+
+ggsave(
+  filename = "TickSampled_Seasonal_Smooth_Panel.png",
+  plot = samp_panel_plot,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+print(samp_panel_plot)
+
+
+
+## Preparing for  combining  with other
+# Monthly aggregates from IDPH sampled data
+aa_samp_monthly <- tick_samp %>%
+  mutate(Month = factor(month, levels = month_levels)) %>%
+  dplyr::select(Month, aa_total) %>%
+  dplyr::rename(aa_samp = aa_total)
+
+dv_samp_monthly <- tick_samp %>%
+  mutate(Month = factor(month, levels = month_levels)) %>%
+  dplyr::select(Month, dv_total) %>%
+  dplyr::rename(dv_samp = dv_total)
+
+is_samp_monthly <- tick_samp %>%
+  mutate(Month = factor(month, levels = month_levels)) %>%
+  dplyr::select(Month, is_total) %>%
+  dplyr::rename(is_samp = is_total)
+
+```
+
+
+
+## combine all monthly average data from tbd and tick bite
+```{r}
+library(dplyr)
+library(purrr)
+
+# Merge all 9 data frames
+dfs <- list(
+  is_exp_monthly,
+  dv_exp_monthly,
+  aa_exp_monthly,
+  monthly_tbd_is,
+  monthly_tbd_dv,
+  monthly_tbd_aa,
+  is_samp_monthly,
+  dv_samp_monthly,
+  aa_samp_monthly
+)
+
+merged_df <- reduce(dfs, full_join, by = "Month")
+
+# Export raw merged
+write.csv(
+  merged_df,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Temporal data/merged_monthly_6dfs.csv",
+  row.names = FALSE
+)
+
+# Phenology = tick bites + TBD cases + sampled ticks
+merged_df <- merged_df %>%
+  mutate(
+    is_phen = is_exp + is_tbd + is_samp,
+    dv_phen = dv_exp + dv_tbd + dv_samp,
+    aa_phen = aa_exp + aa_tbd + aa_samp
+  )
+
+# Z-score
+merged_df <- merged_df %>%
+  mutate(
+    is_phen_z = as.numeric(scale(is_phen)),
+    dv_phen_z = as.numeric(scale(dv_phen)),
+    aa_phen_z = as.numeric(scale(aa_phen))
+  )
+
+# Scale 0.01-0.99
+scale_01 <- function(x) {
+  q_low  <- quantile(x, 0.01, na.rm = TRUE)
+  q_high <- quantile(x, 0.99, na.rm = TRUE)
+  if (is.na(q_low) || is.na(q_high) || q_high == q_low) return(rep(0.5, length(x)))
+  x <- pmin(pmax(x, q_low), q_high)
+  scaled <- (x - q_low) / (q_high - q_low)
+  scaled * 0.98 + 0.01
+}
+
+merged_df <- merged_df %>%
+  mutate(
+    is_phen_scal = scale_01(is_phen),
+    dv_phen_scal = scale_01(dv_phen),
+    aa_phen_scal = scale_01(aa_phen)
+  )
+
+head(merged_df)
+
+# Export full
+write.csv(
+  merged_df,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Temporal data/merged_monthly_phen_scaled.csv",
+  row.names = FALSE
+)
+
+# Export scaled only
+merged_df_subset <- merged_df %>%
+  dplyr::select(Month, is_phen_scal, dv_phen_scal, aa_phen_scal)
+
+write.csv(
+  merged_df_subset,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Temporal data/merged_monthly_phen_scaled_clean.csv",
+  row.names = FALSE
+)
+```
+
+
+
+
+## Pannel tbd and exposure Plot
+```{r}
+library(patchwork)
+
+full_panel_plot <- (aa_smooth | dv_smooth | is_smooth) /
+              (aa_exp_smooth | dv_exp_smooth | is_exp_smooth)/
+          (aa_samp_smooth | dv_samp_smooth | is_samp_smooth)
+
+print(full_panel_plot)
+
+ggsave(
+  filename = "Cases_vs_Exposure_Seasonal_Panel.png",
+  plot = full_panel_plot,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 14,
+  height = 12,
+  dpi = 300
+)
+
+
+```
+
+
+##Phenology curve
+```{r}
+
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# read your phenology table (edit path)
+phen <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Temporal data/merged_monthly_phen_scaled.csv",
+  show_col_types = FALSE
+)
+
+#  make Month ordered + long format
+month_levels <- c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+
+phen_long <- phen %>%
+  mutate(Month = factor(Month, levels = month_levels)) %>%
+  pivot_longer(
+    cols = c(is_phen_scal, dv_phen_scal, aa_phen_scal),
+    names_to = "tick",
+    values_to = "phen"
+  ) %>%
+  mutate(
+    tick = recode(tick,
+                  is_phen_scal = "I. scapularis",
+                  dv_phen_scal = "D. variabilis",
+                  aa_phen_scal = "A. americanum")
+  )
+
+# smooth each series (loess) so we can draw a nice curve + filled area under it
+#    (Creates a fine x grid across months: 1..12)
+smooth_df <- phen_long %>%
+  mutate(mnum = as.numeric(Month)) %>%
+  group_by(tick) %>%
+  group_modify(~{
+    dat <- .x
+    fit <- loess(phen ~ mnum, data = dat, span = 0.6, degree = 2)
+    grid <- data.frame(mnum = seq(1, 12, length.out = 300))
+    grid$phen_smooth <- predict(fit, newdata = grid)
+    grid$phen_smooth <- pmax(grid$phen_smooth, 0)  # keep >=0
+    grid$phen_smooth <- pmin(grid$phen_smooth, 1)  # keep <=1 for scaled
+    grid
+  }) %>%
+  ungroup()
+
+#  plot: shaded area under each curve + line on top
+tick_cols <- c(
+  "I. scapularis"  = "goldenrod",
+  "D. variabilis" = "firebrick",
+  "A. americanum" = "steelblue4"
+)
+
+p_phen <- ggplot(
+  smooth_df,
+  aes(x = mnum, y = phen_smooth, fill = tick, color = tick)
+) +
+  geom_area(alpha = 0.25, position = "identity") +
+  geom_line(linewidth = 1.3) +
+
+  scale_fill_manual(values = tick_cols) +
+  scale_color_manual(values = tick_cols) +
+
+  scale_x_continuous(
+    breaks = 1:12,
+    labels = month_levels,
+    limits = c(1, 12),
+    expand = c(0.01, 0.01)
+  ) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    expand = c(0, 0),
+    name = "Phenology"
+  ) +
+  labs(x = "Month", fill = NULL, color = NULL) +
+  guides(
+    fill  = guide_legend(label.theme = element_text(face = "italic")),
+    color = guide_legend(label.theme = element_text(face = "italic"))
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    axis.line    = element_line(color = "black", linewidth = 1),
+    axis.text    = element_text(color = "black", size = 14),
+    axis.title.x = element_text(face = "bold", size = 16),
+    axis.title.y = element_text(face = "bold", size = 16),
+    legend.position = "top",
+    legend.text = element_text(size = 16)
+  )
+
+print(p_phen)
+# 5) save
+ggsave(
+  filename = "Tick_Phenology_All3_Scaled_Shaded.png",
+  plot = p_phen,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+
+```
+
+
+## importing climate data converting into monthwise data and merging with phenology data
+```{r}
+library(dplyr)
+library(readr)
+library(lubridate)
+
+# Read 365-day climate data 
+clim365 <- read_csv(
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Climate data/illinois_daily_climate.csv",
+  show_col_types = FALSE
+)
+
+# Convert daily mmdd -> monthly climate summaries (12 rows) ----
+clim_month <- clim365 %>%
+  mutate(
+    # mmdd like "1-Jan" / "01-01" / "Jan-01" etc. -> robust parse using fake year
+    fake_date = suppressWarnings(parse_date_time(mmdd, orders = c("d-b", "db", "m-d", "md"), tz = "UTC")),
+    fake_date = if_else(is.na(fake_date), as.Date(paste0("2019-", mmdd)), as.Date(fake_date)),
+    month_num = month(fake_date),
+    Month     = month(fake_date, label = TRUE, abbr = TRUE) |> as.character()
+  ) %>%
+  group_by(month_num, Month) %>%
+  summarise(
+    tavg_C_month_mean  = mean(tavg_C_mean,  na.rm = TRUE),
+    prcp_mm_month_mean = mean(prcp_mm_mean, na.rm = TRUE),
+    prcp_mm_month_sum  = sum(prcp_mm_mean,  na.rm = TRUE), 
+    rh_month_mean      = mean(rh_mean,      na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(month_num) %>%
+  dplyr::select(Month, month_num, tavg_C_month_mean, prcp_mm_month_mean, prcp_mm_month_sum, rh_month_mean)
+
+#  Merge with phenology table and make 1-month lag climate vars ----
+final_df <- merged_df %>%
+  mutate(
+    month_num = match(Month, month.abb)   # ensures correct Jan->Dec order
+  ) %>%
+  left_join(clim_month, by = c("Month", "month_num")) %>%
+  arrange(month_num) %>%
+  mutate(
+    # 1-month lag (previous month). For Jan, lag comes from Dec.
+    tavg_lag1  = dplyr::lag(tavg_C_month_mean,  1, default = last(tavg_C_month_mean)),
+    prcpmean_lag1 = dplyr::lag(prcp_mm_month_mean, 1, default = last(prcp_mm_month_mean)),
+    prcpsum_lag1  = dplyr::lag(prcp_mm_month_sum,  1, default = last(prcp_mm_month_sum)),
+    rh_lag1 = dplyr::lag(rh_month_mean, 1, default = last(rh_month_mean))
+  )
+
+# check
+print(final_df)
+#View(final_df)
+
+```
+
+
+
+##Correltion of climate with phenology
+```{r}
+library(dplyr)
+
+###  NO LAG  ###
+
+# I. scapularis
+cor.test(final_df$is_phen_scal, final_df$tavg_C_month_mean, method = "spearman")
+cor.test(final_df$is_phen_scal, final_df$prcp_mm_month_sum, method = "spearman")
+cor.test(final_df$is_phen_scal, final_df$rh_month_mean, method = "spearman")
+
+summary(lm(is_phen_scal ~ tavg_C_month_mean, data = final_df))
+summary(lm(is_phen_scal ~ prcp_mm_month_sum, data = final_df))
+summary(lm(is_phen_scal ~ rh_month_mean, data = final_df))
+
+# D. variabilis
+cor.test(final_df$dv_phen_scal, final_df$tavg_C_month_mean, method = "spearman")
+cor.test(final_df$dv_phen_scal, final_df$prcp_mm_month_sum, method = "spearman")
+cor.test(final_df$dv_phen_scal, final_df$rh_month_mean, method = "spearman")
+
+summary(lm(dv_phen_scal ~ tavg_C_month_mean, data = final_df))
+summary(lm(dv_phen_scal ~ prcp_mm_month_sum, data = final_df))
+summary(lm(dv_phen_scal ~ rh_month_mean, data = final_df))
+
+# A. americanum
+cor.test(final_df$aa_phen_scal, final_df$tavg_C_month_mean, method = "spearman")
+cor.test(final_df$aa_phen_scal, final_df$prcp_mm_month_sum, method = "spearman")
+cor.test(final_df$aa_phen_scal, final_df$rh_month_mean, method = "spearman")
+
+summary(lm(aa_phen_scal ~ tavg_C_month_mean, data = final_df))
+summary(lm(aa_phen_scal ~ prcp_mm_month_sum, data = final_df))
+summary(lm(aa_phen_scal ~ rh_month_mean, data = final_df))
+
+### 1-MONTH LAG  ###
+
+# I. scapularis
+cor.test(final_df$is_phen_scal, final_df$tavg_lag1, method = "spearman")
+cor.test(final_df$is_phen_scal, final_df$prcpsum_lag1, method = "spearman")
+cor.test(final_df$is_phen_scal, final_df$rh_lag1, method = "spearman")
+
+summary(lm(is_phen_scal ~ tavg_lag1, data = final_df))
+summary(lm(is_phen_scal ~ prcpsum_lag1, data = final_df))
+summary(lm(is_phen_scal ~ rh_lag1, data = final_df))
+
+# D. variabilis
+cor.test(final_df$dv_phen_scal, final_df$tavg_lag1, method = "spearman")
+cor.test(final_df$dv_phen_scal, final_df$prcpsum_lag1, method = "spearman")
+cor.test(final_df$dv_phen_scal, final_df$rh_lag1, method = "spearman")
+
+summary(lm(dv_phen_scal ~ tavg_lag1, data = final_df))
+summary(lm(dv_phen_scal ~ prcpsum_lag1, data = final_df))
+summary(lm(dv_phen_scal ~ rh_lag1, data = final_df))
+
+# A. americanum
+cor.test(final_df$aa_phen_scal, final_df$tavg_lag1, method = "spearman")
+cor.test(final_df$aa_phen_scal, final_df$prcpsum_lag1, method = "spearman")
+cor.test(final_df$aa_phen_scal, final_df$rh_lag1, method = "spearman")
+
+summary(lm(aa_phen_scal ~ tavg_lag1, data = final_df))
+summary(lm(aa_phen_scal ~ prcpsum_lag1, data = final_df))
+summary(lm(aa_phen_scal ~ rh_lag1, data = final_df))
+
+
+### Craet CSV from output of the above correltion
+
+## Auto-extract correlation table
+library(dplyr)
+library(readr)
+
+# Helper functions
+get_cor <- function(x, y, method = "spearman") {
+  t <- cor.test(x, y, method = method)
+  c(rho = round(t$estimate, 4), p_cor = round(t$p.value, 5))
+}
+
+get_lm <- function(formula, data) {
+  m <- summary(lm(formula, data = data))
+  beta <- round(m$coefficients[2, 1], 6)
+  p    <- round(m$coefficients[2, 4], 5)
+  r2   <- round(m$r.squared, 4)
+  c(beta = beta, p_lm = p, R2 = r2)
+}
+
+# Build table
+cor_table <- bind_rows(
+  # NO LAG
+  # IS
+  c(Species="I. scapularis", Lag="No lag", Predictor="Temperature",
+    get_cor(final_df$is_phen_scal, final_df$tavg_C_month_mean),
+    get_lm(is_phen_scal ~ tavg_C_month_mean, final_df)),
+  c(Species="I. scapularis", Lag="No lag", Predictor="Precipitation",
+    get_cor(final_df$is_phen_scal, final_df$prcp_mm_month_sum),
+    get_lm(is_phen_scal ~ prcp_mm_month_sum, final_df)),
+  c(Species="I. scapularis", Lag="No lag", Predictor="Relative Humidity",
+    get_cor(final_df$is_phen_scal, final_df$rh_month_mean),
+    get_lm(is_phen_scal ~ rh_month_mean, final_df)),
+  # DV
+  c(Species="D. variabilis", Lag="No lag", Predictor="Temperature",
+    get_cor(final_df$dv_phen_scal, final_df$tavg_C_month_mean),
+    get_lm(dv_phen_scal ~ tavg_C_month_mean, final_df)),
+  c(Species="D. variabilis", Lag="No lag", Predictor="Precipitation",
+    get_cor(final_df$dv_phen_scal, final_df$prcp_mm_month_sum),
+    get_lm(dv_phen_scal ~ prcp_mm_month_sum, final_df)),
+  c(Species="D. variabilis", Lag="No lag", Predictor="Relative Humidity",
+    get_cor(final_df$dv_phen_scal, final_df$rh_month_mean),
+    get_lm(dv_phen_scal ~ rh_month_mean, final_df)),
+  # AA
+  c(Species="A. americanum", Lag="No lag", Predictor="Temperature",
+    get_cor(final_df$aa_phen_scal, final_df$tavg_C_month_mean),
+    get_lm(aa_phen_scal ~ tavg_C_month_mean, final_df)),
+  c(Species="A. americanum", Lag="No lag", Predictor="Precipitation",
+    get_cor(final_df$aa_phen_scal, final_df$prcp_mm_month_sum),
+    get_lm(aa_phen_scal ~ prcp_mm_month_sum, final_df)),
+  c(Species="A. americanum", Lag="No lag", Predictor="Relative Humidity",
+    get_cor(final_df$aa_phen_scal, final_df$rh_month_mean),
+    get_lm(aa_phen_scal ~ rh_month_mean, final_df)),
+
+  # LAG 1 MONTH
+  # IS
+  c(Species="I. scapularis", Lag="Lag 1 month", Predictor="Temperature",
+    get_cor(final_df$is_phen_scal, final_df$tavg_lag1),
+    get_lm(is_phen_scal ~ tavg_lag1, final_df)),
+  c(Species="I. scapularis", Lag="Lag 1 month", Predictor="Precipitation",
+    get_cor(final_df$is_phen_scal, final_df$prcpsum_lag1),
+    get_lm(is_phen_scal ~ prcpsum_lag1, final_df)),
+  c(Species="I. scapularis", Lag="Lag 1 month", Predictor="Relative Humidity",
+    get_cor(final_df$is_phen_scal, final_df$rh_lag1),
+    get_lm(is_phen_scal ~ rh_lag1, final_df)),
+  # DV
+  c(Species="D. variabilis", Lag="Lag 1 month", Predictor="Temperature",
+    get_cor(final_df$dv_phen_scal, final_df$tavg_lag1),
+    get_lm(dv_phen_scal ~ tavg_lag1, final_df)),
+  c(Species="D. variabilis", Lag="Lag 1 month", Predictor="Precipitation",
+    get_cor(final_df$dv_phen_scal, final_df$prcpsum_lag1),
+    get_lm(dv_phen_scal ~ prcpsum_lag1, final_df)),
+  c(Species="D. variabilis", Lag="Lag 1 month", Predictor="Relative Humidity",
+    get_cor(final_df$dv_phen_scal, final_df$rh_lag1),
+    get_lm(dv_phen_scal ~ rh_lag1, final_df)),
+  # AA
+  c(Species="A. americanum", Lag="Lag 1 month", Predictor="Temperature",
+    get_cor(final_df$aa_phen_scal, final_df$tavg_lag1),
+    get_lm(aa_phen_scal ~ tavg_lag1, final_df)),
+  c(Species="A. americanum", Lag="Lag 1 month", Predictor="Precipitation",
+    get_cor(final_df$aa_phen_scal, final_df$prcpsum_lag1),
+    get_lm(aa_phen_scal ~ prcpsum_lag1, final_df)),
+  c(Species="A. americanum", Lag="Lag 1 month", Predictor="Relative Humidity",
+    get_cor(final_df$aa_phen_scal, final_df$rh_lag1),
+    get_lm(aa_phen_scal ~ rh_lag1, final_df))
+)
+
+
+# Rename rho.rho to rho
+cor_table <- cor_table %>%
+  rename(rho = rho.rho)
+
+# Check
+print(cor_table)
+
+# Export
+write_csv(
+  cor_table,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output/Phenology_Climate_Correlation_Table.csv"
+)
+```
+
+##Correltion plot
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+
+#  Reshape data 
+plot_df <- final_df %>%
+  select(
+    Month,
+    tavg_C_month_mean,
+    prcp_mm_month_sum,
+    is_phen_scal,
+    dv_phen_scal,
+    aa_phen_scal
+  ) %>%
+  pivot_longer(
+    cols = ends_with("_phen_scal"),
+    names_to = "species",
+    values_to = "phenology"
+  ) %>%
+  mutate(
+    species = recode(
+      species,
+      is_phen_scal = "I. scapularis",
+      dv_phen_scal = "D. variabilis",
+      aa_phen_scal = "A. americanum"
+    )
+  )
+
+#  Temperature plots 
+p_temp <- ggplot(plot_df, aes(tavg_C_month_mean, phenology)) +
+  geom_point(size = 3, color = "black") +
+  geom_smooth(method = "lm", se = TRUE,
+              color = "firebrick", linewidth = 1) +
+  facet_wrap(~ species, nrow = 1) +
+  labs(
+    x = "Mean monthly temperature (°C)",
+    y = "Phenology"
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(face = "bold", size = 14),
+    strip.text = element_text(face = "italic", size = 12)
+  )
+
+# Precipitation plots
+p_prcp <- ggplot(plot_df, aes(prcp_mm_month_sum, phenology)) +
+  geom_point(size = 3, color = "black") +
+  geom_smooth(method = "lm", se = TRUE,
+              color = "steelblue4", linewidth = 1) +
+  facet_wrap(~ species, nrow = 1) +
+  labs(
+    x = "Monthly precipitation (mm)",
+    y = "Phenology"
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 1),
+    axis.text = element_text(color = "black"),
+    axis.title = element_text(face = "bold", size = 14),
+    strip.text = element_text(face = "italic", size = 12)
+  )
+
+#  Final panel 
+final_panel_corr <- p_temp / p_prcp
+
+final_panel_corr
+
+ggsave(
+  filename = "Phenology_Climate_Associations_Panel.png",
+  plot = final_panel_corr,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+
+```
+
+
+##Jointpoint Regression Analysis
+```{r}
+library(segmented); library(ggplot2); library(patchwork)
+
+# one theme for all
+my_theme <- theme_classic() +
+  theme(
+    axis.line = element_line(color="black", linewidth=1),
+    axis.text = element_text(color="black", size=14),
+    axis.title = element_text(face="bold", size=16),
+
+    # BOX AROUND SPECIES NAME
+    strip.background = element_rect(fill="grey90", color="black"),
+    strip.text = element_text(face="italic", size=16)
+  )
+
+# helper: blank plot used as a shared row x-label
+row_xlab <- function(lbl) ggplot() + theme_void() +
+  annotate("text", x=0, y=0, label=lbl, fontface="bold", size=6) +
+  xlim(-1,1) + ylim(-1,1)
+
+# A. americanum 
+lm_aa_temp <- lm(aa_phen_scal ~ tavg_C_month_mean, data=final_df)
+jp_aa_temp <- segmented(lm_aa_temp, seg.Z=~tavg_C_month_mean, npsi=1)
+new_temp_aa <- data.frame(tavg_C_month_mean=seq(min(final_df$tavg_C_month_mean,na.rm=TRUE),
+                                                max(final_df$tavg_C_month_mean,na.rm=TRUE), length.out=200))
+pr_temp_aa <- predict(jp_aa_temp, newdata=new_temp_aa, se.fit=TRUE)
+new_temp_aa$fit <- pr_temp_aa$fit; new_temp_aa$lwr <- pr_temp_aa$fit-1.96*pr_temp_aa$se.fit; new_temp_aa$upr <- pr_temp_aa$fit+1.96*pr_temp_aa$se.fit
+bp_aa_temp <- jp_aa_temp$psi[2]
+
+final_df$Species <- "A. americanum"
+
+p_aa_temp <- ggplot(final_df, aes(tavg_C_month_mean, aa_phen_scal)) +
+  geom_point(size=3, color="black") +
+  geom_ribbon(data=new_temp_aa, aes(x=tavg_C_month_mean, ymin=lwr, ymax=upr), inherit.aes=FALSE, alpha=.25) +
+  geom_line(data=new_temp_aa, aes(x=tavg_C_month_mean, y=fit), color="firebrick", linewidth=1) +
+  geom_vline(xintercept=bp_aa_temp, linetype="dashed") +
+  annotate("text", x=bp_aa_temp, y=max(final_df$aa_phen_scal,na.rm=TRUE),
+           label=paste0("BP=", round(bp_aa_temp,2)), hjust=1.25, vjust=1.5, size=4) +
+  labs(x=NULL, y="Phenology") + facet_wrap(~Species) + my_theme
+
+lm_aa_prcp <- lm(aa_phen_scal ~ prcp_mm_month_sum, data=final_df)
+jp_aa_prcp <- segmented(lm_aa_prcp, seg.Z=~prcp_mm_month_sum, npsi=1)
+new_prcp_aa <- data.frame(prcp_mm_month_sum=seq(min(final_df$prcp_mm_month_sum,na.rm=TRUE),
+                                                max(final_df$prcp_mm_month_sum,na.rm=TRUE), length.out=200))
+pr_prcp_aa <- predict(jp_aa_prcp, newdata=new_prcp_aa, se.fit=TRUE)
+new_prcp_aa$fit <- pr_prcp_aa$fit; new_prcp_aa$lwr <- pr_prcp_aa$fit-1.96*pr_prcp_aa$se.fit; new_prcp_aa$upr <- pr_prcp_aa$fit+1.96*pr_prcp_aa$se.fit
+bp_aa_prcp <- jp_aa_prcp$psi[2]
+
+final_df$Species <- "A. americanum"
+
+p_aa_prcp <- ggplot(final_df, aes(prcp_mm_month_sum, aa_phen_scal)) +
+  geom_point(size=3, color="black") +
+  geom_ribbon(data=new_prcp_aa, aes(x=prcp_mm_month_sum, ymin=lwr, ymax=upr), inherit.aes=FALSE, alpha=.25) +
+  geom_line(data=new_prcp_aa, aes(x=prcp_mm_month_sum, y=fit), color="steelblue4", linewidth=1) +
+  geom_vline(xintercept=bp_aa_prcp, linetype="dashed") +
+  annotate("text", x=bp_aa_prcp, y=max(final_df$aa_phen_scal,na.rm=TRUE),
+           label=paste0("BP=", round(bp_aa_prcp,2)), hjust=1.25, vjust=1.5, size=4) +
+  labs(x=NULL, y="Phenology") + facet_wrap(~Species) + my_theme
+
+#  D. variabilis 
+lm_dv_temp <- lm(dv_phen_scal ~ tavg_C_month_mean, data=final_df)
+jp_dv_temp <- segmented(lm_dv_temp, seg.Z=~tavg_C_month_mean, npsi=1)
+new_temp_dv <- data.frame(tavg_C_month_mean=seq(min(final_df$tavg_C_month_mean,na.rm=TRUE),
+                                                max(final_df$tavg_C_month_mean,na.rm=TRUE), length.out=200))
+pr_temp_dv <- predict(jp_dv_temp, newdata=new_temp_dv, se.fit=TRUE)
+new_temp_dv$fit <- pr_temp_dv$fit; new_temp_dv$lwr <- pr_temp_dv$fit-1.96*pr_temp_dv$se.fit; new_temp_dv$upr <- pr_temp_dv$fit+1.96*pr_temp_dv$se.fit
+bp_dv_temp <- jp_dv_temp$psi[2]
+
+final_df$Species <- "D. variabilis"
+
+p_dv_temp <- ggplot(final_df, aes(tavg_C_month_mean, dv_phen_scal)) +
+  geom_point(size=3, color="black") +
+  geom_ribbon(data=new_temp_dv, aes(x=tavg_C_month_mean, ymin=lwr, ymax=upr), inherit.aes=FALSE, alpha=.25) +
+  geom_line(data=new_temp_dv, aes(x=tavg_C_month_mean, y=fit), color="firebrick", linewidth=1) +
+  geom_vline(xintercept=bp_dv_temp, linetype="dashed") +
+  annotate("text", x=bp_dv_temp, y=max(final_df$dv_phen_scal,na.rm=TRUE),
+           label=paste0("BP=", round(bp_dv_temp,2)), hjust=-.05, vjust=1.1, size=4) +
+  labs(x=NULL, y="Phenology") + facet_wrap(~Species) + my_theme
+
+lm_dv_prcp <- lm(dv_phen_scal ~ prcp_mm_month_sum, data=final_df)
+jp_dv_prcp <- segmented(lm_dv_prcp, seg.Z=~prcp_mm_month_sum, npsi=1)
+new_prcp_dv <- data.frame(prcp_mm_month_sum=seq(min(final_df$prcp_mm_month_sum,na.rm=TRUE),
+                                                max(final_df$prcp_mm_month_sum,na.rm=TRUE), length.out=200))
+pr_prcp_dv <- predict(jp_dv_prcp, newdata=new_prcp_dv, se.fit=TRUE)
+new_prcp_dv$fit <- pr_prcp_dv$fit; new_prcp_dv$lwr <- pr_prcp_dv$fit-1.96*pr_prcp_dv$se.fit; new_prcp_dv$upr <- pr_prcp_dv$fit+1.96*pr_prcp_dv$se.fit
+bp_dv_prcp <- jp_dv_prcp$psi[2]
+
+final_df$Species <- "D. variabilis"
+
+p_dv_prcp <- ggplot(final_df, aes(prcp_mm_month_sum, dv_phen_scal)) +
+  geom_point(size=3, color="black") +
+  geom_ribbon(data=new_prcp_dv, aes(x=prcp_mm_month_sum, ymin=lwr, ymax=upr), inherit.aes=FALSE, alpha=.25) +
+  geom_line(data=new_prcp_dv, aes(x=prcp_mm_month_sum, y=fit), color="steelblue4", linewidth=1) +
+  geom_vline(xintercept=bp_dv_prcp, linetype="dashed") +
+  annotate("text", x=bp_dv_prcp, y=max(final_df$dv_phen_scal,na.rm=TRUE),
+           label=paste0("BP=", round(bp_dv_prcp,2)), hjust=-.05, vjust=1.1, size=4) +
+  labs(x=NULL, y="Phenology") + facet_wrap(~Species) + my_theme
+
+#  I. scapularis 
+lm_is_temp <- lm(is_phen_scal ~ tavg_C_month_mean, data=final_df)
+jp_is_temp <- segmented(lm_is_temp, seg.Z=~tavg_C_month_mean, npsi=1)
+new_temp_is <- data.frame(tavg_C_month_mean=seq(min(final_df$tavg_C_month_mean,na.rm=TRUE),
+                                                max(final_df$tavg_C_month_mean,na.rm=TRUE), length.out=200))
+pr_temp_is <- predict(jp_is_temp, newdata=new_temp_is, se.fit=TRUE)
+new_temp_is$fit <- pr_temp_is$fit; new_temp_is$lwr <- pr_temp_is$fit-1.96*pr_temp_is$se.fit; new_temp_is$upr <- pr_temp_is$fit+1.96*pr_temp_is$se.fit
+bp_is_temp <- jp_is_temp$psi[2]
+
+final_df$Species <- "I. scapularis"
+
+p_is_temp <- ggplot(final_df, aes(tavg_C_month_mean, is_phen_scal)) +
+  geom_point(size=3, color="black") +
+  geom_ribbon(data=new_temp_is, aes(x=tavg_C_month_mean, ymin=lwr, ymax=upr), inherit.aes=FALSE, alpha=.25) +
+  geom_line(data=new_temp_is, aes(x=tavg_C_month_mean, y=fit), color="firebrick", linewidth=1) +
+  geom_vline(xintercept=bp_is_temp, linetype="dashed") +
+  annotate("text", x=bp_is_temp, y=max(final_df$is_phen_scal,na.rm=TRUE),
+           label=paste0("BP=", round(bp_is_temp,2)), hjust=-.05, vjust=1.1, size=4) +
+  labs(x=NULL, y="Phenology") + facet_wrap(~Species) + my_theme
+
+lm_is_prcp <- lm(is_phen_scal ~ prcp_mm_month_sum, data=final_df)
+jp_is_prcp <- segmented(lm_is_prcp, seg.Z=~prcp_mm_month_sum, npsi=1)
+new_prcp_is <- data.frame(prcp_mm_month_sum=seq(min(final_df$prcp_mm_month_sum,na.rm=TRUE),
+                                                max(final_df$prcp_mm_month_sum,na.rm=TRUE), length.out=200))
+pr_prcp_is <- predict(jp_is_prcp, newdata=new_prcp_is, se.fit=TRUE)
+new_prcp_is$fit <- pr_prcp_is$fit; new_prcp_is$lwr <- pr_prcp_is$fit-1.96*pr_prcp_is$se.fit; new_prcp_is$upr <- pr_prcp_is$fit+1.96*pr_prcp_is$se.fit
+bp_is_prcp <- jp_is_prcp$psi[2]
+
+final_df$Species <- "I. scapularis"
+
+p_is_prcp <- ggplot(final_df, aes(prcp_mm_month_sum, is_phen_scal)) +
+  geom_point(size=3, color="black") +
+  geom_ribbon(data=new_prcp_is, aes(x=prcp_mm_month_sum, ymin=lwr, ymax=upr), inherit.aes=FALSE, alpha=.25) +
+  geom_line(data=new_prcp_is, aes(x=prcp_mm_month_sum, y=fit), color="steelblue4", linewidth=1) +
+  geom_vline(xintercept=bp_is_prcp, linetype="dashed") +
+  annotate("text", x=bp_is_prcp, y=max(final_df$is_phen_scal,na.rm=TRUE),
+           label=paste0("BP=", round(bp_is_prcp,2)), hjust=-.05, vjust=1.1, size=4) +
+  labs(x=NULL, y="Phenology") + facet_wrap(~Species) + my_theme
+
+# Pannel
+temp_row <- p_aa_temp | p_dv_temp | p_is_temp
+prcp_row <- p_aa_prcp | p_dv_prcp | p_is_prcp
+
+panel_joinpoint <- temp_row / row_xlab("Mean monthly temperature (°C)") /
+                   prcp_row / row_xlab("Monthly precipitation (mm)") +
+  plot_layout(heights=c(10, 1.1, 10, 1.1))
+
+panel_joinpoint
+
+
+ggsave(
+  filename = "Phenology_Climate_Joinpoint_Panel_updated.png",
+  plot = panel_joinpoint,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 14,
+  height = 9,
+  dpi = 300
+)
+
+```
+
+
+## For Relative Humidity
+```{r}
+
+library(segmented); library(ggplot2); library(patchwork)
+
+# A. americanum (RH)
+lm_aa_rh <- lm(aa_phen_scal ~ rh_month_mean, data = final_df)
+jp_aa_rh <- segmented(lm_aa_rh, seg.Z = ~ rh_month_mean, npsi = 2)
+
+new_rh_aa <- data.frame(
+  rh_month_mean = seq(min(final_df$rh_month_mean, na.rm = TRUE),
+                      max(final_df$rh_month_mean, na.rm = TRUE),
+                      length.out = 200)
+)
+
+pr_rh_aa <- predict(jp_aa_rh, newdata = new_rh_aa, se.fit = TRUE)
+new_rh_aa$fit <- pr_rh_aa$fit
+new_rh_aa$lwr <- pr_rh_aa$fit - 1.96 * pr_rh_aa$se.fit
+new_rh_aa$upr <- pr_rh_aa$fit + 1.96 * pr_rh_aa$se.fit
+bp_aa_rh <- jp_aa_rh$psi[2]
+
+final_df$Species <- "A. americanum"
+
+p_aa_rh <- ggplot(final_df, aes(rh_month_mean, aa_phen_scal)) +
+  geom_point(size = 3, color = "black") +
+  geom_ribbon(data = new_rh_aa,
+              aes(x = rh_month_mean, ymin = lwr, ymax = upr),
+              inherit.aes = FALSE, alpha = .25) +
+  geom_line(data = new_rh_aa,
+            aes(x = rh_month_mean, y = fit),
+            color = "darkgreen", linewidth = 1) +
+  geom_vline(xintercept = bp_aa_rh, linetype = "dashed") +
+  annotate("text", x = bp_aa_rh, y = max(final_df$aa_phen_scal, na.rm = TRUE),
+           label = paste0("BP=", round(bp_aa_rh, 2)),
+           hjust = -0.05, vjust = 1.1, size = 3.5) +
+  labs(x = NULL, y = "Phenology") +
+  facet_wrap(~Species) + my_theme
+
+
+# D. variabilis 
+# D. variabilis — use npsi=1 since RH signal is weaker for DV
+lm_dv_rh <- lm(dv_phen_scal ~ rh_month_mean, data = final_df)
+jp_dv_rh <- segmented(lm_dv_rh, seg.Z = ~ rh_month_mean, npsi = 1)
+
+new_rh_dv <- data.frame(
+  rh_month_mean = seq(min(final_df$rh_month_mean, na.rm = TRUE),
+                      max(final_df$rh_month_mean, na.rm = TRUE),
+                      length.out = 200)
+)
+
+pr_rh_dv <- predict(jp_dv_rh, newdata = new_rh_dv, se.fit = TRUE)
+new_rh_dv$fit <- pr_rh_dv$fit
+new_rh_dv$lwr <- pr_rh_dv$fit - 1.96 * pr_rh_dv$se.fit
+new_rh_dv$upr <- pr_rh_dv$fit + 1.96 * pr_rh_dv$se.fit
+bp_dv_rh <- jp_dv_rh$psi[1, 2]  # note: [1,2] for npsi=1
+
+final_df$Species <- "D. variabilis"
+
+p_dv_rh <- ggplot(final_df, aes(rh_month_mean, dv_phen_scal)) +
+  geom_point(size = 3, color = "black") +
+  geom_ribbon(data = new_rh_dv,
+              aes(x = rh_month_mean, ymin = lwr, ymax = upr),
+              inherit.aes = FALSE, alpha = .25) +
+  geom_line(data = new_rh_dv,
+            aes(x = rh_month_mean, y = fit),
+            color = "darkgreen", linewidth = 1) +
+  geom_vline(xintercept = bp_dv_rh, linetype = "dashed") +
+  annotate("text", x = bp_dv_rh, y = max(final_df$dv_phen_scal, na.rm = TRUE),
+           label = paste0("BP=", round(bp_dv_rh, 2)),
+           hjust = -0.05, vjust = 1.1, size = 3.5) +
+  labs(x = NULL, y = "Phenology") +
+  facet_wrap(~Species) + my_theme
+
+
+# I. scapularis 
+lm_is_rh <- lm(is_phen_scal ~ rh_month_mean, data = final_df)
+jp_is_rh <- segmented(lm_is_rh, seg.Z = ~ rh_month_mean, npsi = 2)
+
+new_rh_is <- data.frame(
+  rh_month_mean = seq(min(final_df$rh_month_mean, na.rm = TRUE),
+                      max(final_df$rh_month_mean, na.rm = TRUE),
+                      length.out = 200)
+)
+
+pr_rh_is <- predict(jp_is_rh, newdata = new_rh_is, se.fit = TRUE)
+new_rh_is$fit <- pr_rh_is$fit
+new_rh_is$lwr <- pr_rh_is$fit - 1.96 * pr_rh_is$se.fit
+new_rh_is$upr <- pr_rh_is$fit + 1.96 * pr_rh_is$se.fit
+bp_is_rh <- jp_is_rh$psi[2]
+
+final_df$Species <- "I. scapularis"
+
+p_is_rh <- ggplot(final_df, aes(rh_month_mean, is_phen_scal)) +
+  geom_point(size = 3, color = "black") +
+  geom_ribbon(data = new_rh_is,
+              aes(x = rh_month_mean, ymin = lwr, ymax = upr),
+              inherit.aes = FALSE, alpha = .25) +
+  geom_line(data = new_rh_is,
+            aes(x = rh_month_mean, y = fit),
+            color = "darkgreen", linewidth = 1) +
+  geom_vline(xintercept = bp_is_rh, linetype = "dashed") +
+  annotate("text", x = bp_is_rh, y = max(final_df$is_phen_scal, na.rm = TRUE),
+           label = paste0("BP=", round(bp_is_rh, 2)),
+           hjust = -0.05, vjust = 1.1, size = 3.5) +
+  labs(x = NULL, y = "Phenology") +
+  facet_wrap(~Species) + my_theme
+
+
+
+#Reulst summary
+summary(jp_aa_rh)
+summary(jp_dv_rh)
+summary(jp_is_rh)
+
+confint(jp_aa_rh)
+confint(jp_dv_rh)
+confint(jp_is_rh)
+
+# Combine into one panel
+# Make only left plot carry the shared Y label
+p_aa_rh <- p_aa_rh + labs(y = "Phenology")
+p_dv_rh <- p_dv_rh + labs(y = NULL)
+p_is_rh <- p_is_rh + labs(y = NULL)
+
+# Optional: hide y tick labels on middle/right to look cleaner
+p_dv_rh <- p_dv_rh + theme(axis.text.y = element_blank(),
+                           axis.ticks.y = element_blank())
+p_is_rh <- p_is_rh + theme(axis.text.y = element_blank(),
+                           axis.ticks.y = element_blank())
+
+# 1 row, 3 columns + shared X label (same as your style)
+rh_row <- p_aa_rh | p_dv_rh | p_is_rh
+
+rh_panel <- rh_row / row_xlab("Mean monthly relative humidity (%)") +
+  plot_layout(heights = c(10, 1.1))
+
+rh_panel
+
+ggsave(
+  filename = "Phenology_RH_Joinpoint_Panel.png",
+  plot = rh_panel,
+  path = "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output",
+  width = 14,
+  height = 5,
+  dpi = 300
+)
+
+```

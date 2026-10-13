@@ -1,0 +1,554 @@
+---
+title: "Calendar Heat Map Plot"
+author: "Abrar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Plotting Calendar Plot
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(scales)
+
+# Paths
+file_path <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Monthly risk/county_monthly_risk_wide_formate.csv"
+
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output"
+
+# Read data
+df <- read_csv(file_path)
+
+# Exact county order for plot
+south_counties <- df %>%
+  filter(Region == "south") %>%
+  arrange(County) %>%
+  pull(County)
+
+central_counties <- df %>%
+  filter(Region == "central") %>%
+  arrange(County) %>%
+  pull(County)
+
+north_counties <- df %>%
+  filter(Region == "north") %>%
+  arrange(County) %>%
+  pull(County)
+
+# First levels go at bottom, last levels go at top
+county_order <- c(south_counties, central_counties, north_counties)
+
+region_info <- tibble(
+  Region = c("south", "central", "north"),
+  n = c(length(south_counties), length(central_counties), length(north_counties))
+) %>%
+  mutate(
+    ymax = cumsum(n),
+    ymin = ymax - n + 1,
+    ymid = (ymin + ymax) / 2
+  )
+
+# Ordering
+month_levels <- c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+
+# Reshape
+df_long <- df %>%
+  pivot_longer(
+    cols = where(is.numeric),
+    names_to = c("Month", "Species"),
+    names_sep = "_",
+    values_to = "Risk"
+  ) %>%
+  mutate(
+    Month = factor(Month, levels = month_levels),
+    County = factor(County, levels = county_order),
+    Species = recode(
+      Species,
+      aa = "Amblyomma americanum",
+      dv = "Dermacentor variabilis",
+      is = "Ixodes scapularis"
+    )
+  )
+
+# Heatmap function
+make_heatmap <- function(dat, title_text, region_vjust = 26, left_margin = 140, show_legend = TRUE) {
+  ggplot(dat, aes(x = Month, y = County, fill = Risk)) +
+    
+    geom_tile(color = "white", linewidth = 0.15) +
+    
+    scale_fill_gradientn(
+      colors = c("white", "#FFFFCC", "#FDB863", "#E66101", "#B2182B"),
+      values = rescale(c(0, 0.1, 0.25, 0.5, 1)),
+      trans = "sqrt",
+      name = "Risk"
+    ) +
+    
+    scale_y_discrete(limits = county_order) +
+    
+    labs(
+      x = NULL,
+      y = NULL,
+      title = title_text
+    ) +
+    
+    geom_hline(
+      yintercept = c(length(south_counties),
+                     length(south_counties) + length(central_counties)) + 0.5,
+      color = "black",
+      linewidth = 0.6
+    ) +
+    
+    annotate("text",
+             x = 1,
+             y = region_info$ymid[region_info$Region == "south"],
+             label = "South",
+             angle = 90,
+             fontface = "bold",
+             size = 4,
+             hjust = 0.5,
+             vjust = region_vjust) +
+    
+    annotate("text",
+             x = 1,
+             y = region_info$ymid[region_info$Region == "central"],
+             label = "Central",
+             angle = 90,
+             fontface = "bold",
+             size = 4,
+             hjust = 0.5,
+             vjust = region_vjust) +
+    
+    annotate("text",
+             x = 1,
+             y = region_info$ymid[region_info$Region == "north"],
+             label = "North",
+             angle = 90,
+             fontface = "bold",
+             size = 4,
+             hjust = 0.5,
+             vjust = region_vjust) +
+    
+    coord_cartesian(clip = "off") +
+    
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
+      axis.text.y = element_text(size = 6, color = "black"),
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.title = element_text(face = "bold"),
+      legend.text = element_text(size = 8),
+      legend.position = if (show_legend) "right" else "none",
+      panel.grid = element_blank(),
+      axis.ticks = element_blank(),
+      plot.margin = margin(5.5, 5.5, 5.5, left_margin)
+    )
+}
+
+# Panel plots
+p_aa_panel <- make_heatmap(
+  df_long %>% filter(Species == "Amblyomma americanum"),
+  expression(italic("Amblyomma americanum")),
+  region_vjust = 39,
+  left_margin = 40,
+  show_legend = TRUE
+)
+
+p_dv_panel <- make_heatmap(
+  df_long %>% filter(Species == "Dermacentor variabilis"),
+  expression(italic("Dermacentor variabilis")),
+  region_vjust = 39,
+  left_margin = 40,
+  show_legend = TRUE
+)
+
+p_is_panel <- make_heatmap(
+  df_long %>% filter(Species == "Ixodes scapularis"),
+  expression(italic("Ixodes scapularis")),
+  region_vjust = 39,
+  left_margin = 40,
+  show_legend = TRUE
+)
+
+# Combined panel with one legend
+p_panel <- (p_aa_panel + p_dv_panel + p_is_panel) +
+  plot_layout(ncol = 3, guides = "collect") &
+  theme(legend.position = "right")
+
+p_panel
+
+# Save panel TIFF
+ggsave(
+  file.path(out_dir, "heatmap_panel_monthly_risk.tiff"),
+  plot = p_panel,
+  width = 18,
+  height = 16,
+  dpi = 300,
+  compression = "lzw"
+)
+
+
+## Modified Pannel Plot
+
+# remove region labels from first two plots (keep only Ixodes)
+p_aa_nolab <- p_aa_panel
+p_aa_nolab$layers <- p_aa_nolab$layers[-c(3,4,5)]
+
+p_dv_nolab <- p_dv_panel
+p_dv_nolab$layers <- p_dv_nolab$layers[-c(3,4,5)]
+
+# new panel: only Ixodes has North/Central/South labels
+p_panel_ixodes_only_labels <- (p_aa_nolab + p_dv_nolab + p_is_panel) +
+  plot_layout(ncol = 3, guides = "collect") &
+  theme(legend.position = "right")
+
+# display it
+p_panel_ixodes_only_labels
+
+ggsave(
+  file.path(out_dir, "heatmap_panel_monthly_risk_single label.tiff"),
+  plot = p_panel_ixodes_only_labels,
+  width = 18,
+  height = 16,
+  dpi = 300,
+  compression = "lzw"
+)
+
+
+# Individual plots with smaller left shift
+p_aa <- make_heatmap(
+  df_long %>% filter(Species == "Amblyomma americanum"),
+  expression(italic("Amblyomma americanum")),
+  region_vjust = 51,
+  left_margin = 40,
+  show_legend = TRUE
+)
+
+p_dv <- make_heatmap(
+  df_long %>% filter(Species == "Dermacentor variabilis"),
+  expression(italic("Dermacentor variabilis")),
+  region_vjust = 51,
+  left_margin = 40,
+  show_legend = TRUE
+)
+
+p_is <- make_heatmap(
+  df_long %>% filter(Species == "Ixodes scapularis"),
+  expression(italic("Ixodes scapularis")),
+  region_vjust = 51,
+  left_margin = 40,
+  show_legend = TRUE
+)
+
+# Save individual TIFFs
+ggsave(file.path(out_dir, "heatmap_aa.tiff"), p_aa, width = 8, height = 16, dpi = 300, compression = "lzw")
+ggsave(file.path(out_dir, "heatmap_dv.tiff"), p_dv, width = 8, height = 16, dpi = 300, compression = "lzw")
+ggsave(file.path(out_dir, "heatmap_is.tiff"), p_is, width = 8, height = 16, dpi = 300, compression = "lzw")
+
+```
+
+
+## Plotting Calendar Plot with distribution
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(scales)
+
+# Paths
+file_path <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Monthly risk/county_monthly_risk_wide_formate.csv"
+
+out_dir <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Output"
+
+# Read data
+df <- read_csv(file_path)
+
+# Ordering
+month_levels <- c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+
+# Exact county order for plot
+south_counties <- df %>%
+  filter(Region == "south") %>%
+  arrange(County) %>%
+  pull(County)
+
+central_counties <- df %>%
+  filter(Region == "central") %>%
+  arrange(County) %>%
+  pull(County)
+
+north_counties <- df %>%
+  filter(Region == "north") %>%
+  arrange(County) %>%
+  pull(County)
+
+# first levels bottom, last levels top
+county_order <- c(south_counties, central_counties, north_counties)
+
+region_info <- tibble(
+  Region = c("south", "central", "north"),
+  n = c(length(south_counties), length(central_counties), length(north_counties))
+) %>%
+  mutate(
+    ymax = cumsum(n),
+    ymin = ymax - n + 1,
+    ymid = (ymin + ymax) / 2
+  )
+
+# Reshape
+df_long <- df %>%
+  pivot_longer(
+    cols = where(is.numeric),
+    names_to = c("Month", "Species"),
+    names_sep = "_",
+    values_to = "Risk"
+  ) %>%
+  mutate(
+    Month = factor(Month, levels = month_levels),
+    County = factor(County, levels = county_order),
+    Species = recode(
+      Species,
+      aa = "Amblyomma americanum",
+      dv = "Dermacentor variabilis",
+      is = "Ixodes scapularis"
+    )
+  )
+
+# Function to make heatmap + marginal plots
+make_heatmap_with_marginals <- function(dat, title_text,
+                                        region_vjust = 26,
+                                        left_margin = 140,
+                                        show_region_labels = TRUE,
+                                        show_legend = TRUE) {
+  
+  # summaries
+  month_marginal <- dat %>%
+    group_by(Month) %>%
+    summarise(Risk_month = mean(Risk, na.rm = TRUE), .groups = "drop") %>%
+    mutate(
+      Month = factor(Month, levels = month_levels),
+      month_id = seq_along(Month)
+    )
+  
+  county_marginal <- dat %>%
+    group_by(County) %>%
+    summarise(Risk_county = mean(Risk, na.rm = TRUE), .groups = "drop") %>%
+    mutate(
+      County = factor(County, levels = county_order),
+      county_id = seq_along(County)
+    )
+  
+  # heatmap
+  p_heat <- ggplot(dat, aes(x = Month, y = County, fill = Risk)) +
+    geom_tile(color = "white", linewidth = 0.15) +
+    scale_fill_gradientn(
+      colors = c("white", "#FFFFCC", "#FDB863", "#E66101", "#B2182B"),
+      values = scales::rescale(c(0, 0.1, 0.25, 0.5, 1)),
+      trans = "sqrt",
+      name = "Risk"
+    ) +
+    scale_y_discrete(limits = county_order) +
+    labs(x = NULL, y = NULL, title = title_text) +
+    geom_hline(
+      yintercept = c(length(south_counties),
+                     length(south_counties) + length(central_counties)) + 0.5,
+      color = "black",
+      linewidth = 0.6
+    ) +
+    coord_cartesian(clip = "off") +
+    theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, color = "black",
+                           size = 16, face = "bold"),
+axis.text.y = element_text(size = 10, color = "black"),
+plot.title  = element_text(face = "bold", hjust = 0.5, size = 24),
+legend.title = element_text(size = 16, face = "bold", color = "black"),
+legend.text  = element_text(size = 14, color = "black"),
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
+      panel.grid = element_blank(),
+      axis.ticks = element_blank(),
+      legend.position = if (show_legend) "right" else "none",
+      plot.margin = margin(5.5, 5.5, 5.5, left_margin)
+    )
+  
+  if (show_region_labels) {
+    p_heat <- p_heat +
+      annotate("text",
+               x = 1,
+               y = region_info$ymid[region_info$Region == "south"],
+               label = "South",
+               angle = 90,
+               fontface = "bold",
+               size = 6,
+               hjust = 0.5,
+               vjust = region_vjust) +
+      annotate("text",
+               x = 1,
+               y = region_info$ymid[region_info$Region == "central"],
+               label = "Central",
+               angle = 90,
+               fontface = "bold",
+               size = 6,
+               hjust = 0.5,
+               vjust = region_vjust) +
+      annotate("text",
+               x = 1,
+               y = region_info$ymid[region_info$Region == "north"],
+               label = "North",
+               angle = 90,
+               fontface = "bold",
+               size = 6,
+               hjust = 0.5,
+               vjust = region_vjust)
+  }
+  
+  # top marginal: bars + smooth/trend line
+  p_top <- ggplot(month_marginal, aes(x = Month, y = Risk_month, group = 1)) +
+    geom_col(fill = "#E66101", width = 0.9) +
+    theme_void() +
+    theme(
+      plot.margin = margin(0, 5.5, 0, left_margin)
+    )
+  
+  # right marginal: bars + smooth/trend line
+  p_right <- ggplot(county_marginal, aes(x = Risk_county, y = County)) +
+    geom_col(fill = "#E66101", width = 0.9) +
+    scale_y_discrete(limits = county_order) +
+    theme_void() +
+    theme(
+      plot.margin = margin(5.5, 0, 5.5, 0)
+    )
+  
+  p_blank <- patchwork::plot_spacer()
+  
+  combined <- (p_top + p_blank) /
+    (p_heat + p_right) +
+    plot_layout(
+      widths = c(5, 1.2),
+      heights = c(1.2, 5)
+    )
+  
+  combined
+}
+
+# Create pannel plots
+p_aa_marg_panel <- make_heatmap_with_marginals(
+  df_long %>% filter(Species == "Amblyomma americanum"),
+  expression(italic("Amblyomma americanum")),
+  region_vjust = 24,
+  left_margin = 140,
+  show_region_labels = TRUE,
+  show_legend = TRUE
+)
+
+p_dv_marg_panel <- make_heatmap_with_marginals(
+  df_long %>% filter(Species == "Dermacentor variabilis"),
+  expression(italic("Dermacentor variabilis")),
+  region_vjust = 24,
+  left_margin = 140,
+  show_region_labels = TRUE,
+  show_legend = TRUE
+)
+
+p_is_marg_panel <- make_heatmap_with_marginals(
+  df_long %>% filter(Species == "Ixodes scapularis"),
+  expression(italic("Ixodes scapularis")),
+  region_vjust = 24,
+  left_margin = 140,
+  show_region_labels = TRUE,
+  show_legend = TRUE
+)
+
+
+p_all_marg <- (p_aa_marg_panel | p_dv_marg_panel | p_is_marg_panel) +
+  plot_layout(ncol = 3, guides = "collect") &
+  theme(
+    plot.margin = margin(0, 0, 0, 0),
+    legend.position = "right"
+  )
+
+#save
+
+ggsave(
+  file.path(out_dir, "heatmap_panel_monthly_risk_with_marginals.tiff"),
+  plot = p_all_marg,
+  width = 30,
+  height = 16,
+  dpi = 300,
+  compression = "lzw"
+)
+
+
+# creat individual plots
+p_aa_marg <- make_heatmap_with_marginals(
+  df_long %>% filter(Species == "Amblyomma americanum"),
+  expression(italic("Amblyomma americanum")),
+  region_vjust = 19,
+  left_margin = 80,
+  show_region_labels = TRUE,
+  show_legend = TRUE
+)
+
+#save
+ggsave(
+  file.path(out_dir, "heatmap_aa_with_marginals.tiff"),
+  plot = p_aa_marg,
+  width = 10,
+  height = 16,
+  dpi = 300,
+  compression = "lzw"
+)
+
+
+p_dv_marg <- make_heatmap_with_marginals(
+  df_long %>% filter(Species == "Dermacentor variabilis"),
+  expression(italic("Dermacentor variabilis")),
+  region_vjust = 19,
+  left_margin = 80,
+  show_region_labels = TRUE,
+  show_legend = TRUE
+)
+
+#save
+ggsave(
+  file.path(out_dir, "heatmap_dv_with_marginals.tiff"),
+  plot = p_dv_marg,
+  width = 10,
+  height = 16,
+  dpi = 300,
+  compression = "lzw"
+)
+
+
+
+p_is_marg <- make_heatmap_with_marginals(
+  df_long %>% filter(Species == "Ixodes scapularis"),
+  expression(italic("Ixodes scapularis")),
+  region_vjust = 19,
+  left_margin = 80,
+  show_region_labels = TRUE,
+  show_legend = TRUE
+)
+
+#save
+ggsave(
+  file.path(out_dir, "heatmap_is_with_marginals.tiff"),
+  plot = p_is_marg,
+  width = 10,
+  height = 16,
+  dpi = 300,
+  compression = "lzw"
+)
+
+```
+

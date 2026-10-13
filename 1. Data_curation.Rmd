@@ -1,0 +1,240 @@
+---
+title: "TBD_risk"
+author: "Abrar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Scaling of tick data and its CrI width
+```{r}
+
+## Scaling
+
+library(dplyr)
+library(readr)
+
+# Read tick data
+file_path <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick Data/predicted_tick.csv"
+ticks <- read_csv(file_path)
+
+# fucntion scale 0–1
+scale_01 <- function(x) {
+  q_low  <- quantile(x, 0.01, na.rm = TRUE)
+  q_high <- quantile(x, 0.99, na.rm = TRUE)
+  
+  x <- pmin(pmax(x, q_low), q_high)
+
+  scaled <- (x - q_low) / (q_high - q_low)
+
+  # shift range to 0.01–0.99
+  scaled <- scaled * 0.98 + 0.01
+  
+  return(scaled)
+}
+
+# Step 1: compute scaled hazard + certainty
+ticks_scaled <- ticks %>%
+  mutate(
+    # Amblyomma americanum (aa)
+    PM_aa_scaled  = scale_01(PM_aa),
+    CIw_aa_scaled = scale_01(CIw_aa),
+    Cert_aa       = 1 - CIw_aa_scaled,
+
+    # Dermacentor variabilis (dv)
+    PM_dv_scaled  = scale_01(PM_dv),
+    CIw_dv_scaled = scale_01(CIw_dv),
+    Cert_dv       = 1 - CIw_dv_scaled,
+
+    # Ixodes scapularis (is)
+    PM_is_scaled  = scale_01(PM_is),
+    CIw_is_scaled = scale_01(CIw_is),
+    Cert_is       = 1 - CIw_is_scaled
+  )
+
+# keep only scaled hazard + scaled certainty (rounded)
+ticks_final <- ticks_scaled %>%
+  dplyr::select(
+    County,
+    PM_aa_scaled, Cert_aa,
+    PM_dv_scaled, Cert_dv,
+    PM_is_scaled, Cert_is
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 5)))
+
+print(ticks_final)
+
+# save
+write_csv(
+  ticks_final,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick Data/predicted_tick_scaled.csv"
+)
+
+
+```
+
+
+##Human TBD cases and Annual average Incidence and scaling
+```{r}
+library(dplyr)
+library(readr)
+
+# Read original human case data
+file_path <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_cases.csv"
+human <- read_csv(file_path)
+
+# Combine diseases by vector
+TBD_cases_by_vector <- human %>%
+  mutate(
+    is_tbd_cases = Anaplasmosis + Babesiosis + Lyme,
+    dv_tbd_cases = `Spotted Fever Rickettsioses`,
+    aa_tbd_cases = Ehrlichiosis
+  ) %>%
+  dplyr::select(
+    County,
+    is_tbd_cases,
+    dv_tbd_cases,
+    aa_tbd_cases,
+    population
+  )
+
+print(TBD_cases_by_vector)
+
+# Export new simplified file
+write_csv(
+  TBD_cases_by_vector,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_cases_by_vector.csv"
+)
+
+
+# Calculating Annual Average Incidence per 100,000 population
+human_inc <- TBD_cases_by_vector %>%
+  mutate(
+    Inc_is_cases = (is_tbd_cases / (population * 4)) * 1e5,
+    Inc_dv_cases = (dv_tbd_cases / (population * 4)) * 1e5,
+    Inc_aa_cases = (aa_tbd_cases / (population * 4)) * 1e5
+  ) %>%
+  mutate(across(starts_with("Inc_"), ~ round(.x, 4)))
+
+print(human_inc)
+
+# Export
+write_csv(
+  human_inc,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_annual_average_incidence_vector.csv"
+)
+
+
+# Scaling of the incidence
+scale_01 <- function(x) {
+  out <- rep(0, length(x))          # start everything at 0
+  nz  <- x > 0                      # index of non-zero values
+  
+  if (sum(nz) < 2) return(out)      # safety: if fewer than 2 non-zero, return all zeros
+  
+  vals   <- x[nz]
+  q_low  <- quantile(vals, 0.01, na.rm = TRUE)
+  q_high <- quantile(vals, 0.99, na.rm = TRUE)
+  
+  vals   <- pmin(pmax(vals, q_low), q_high)
+  scaled <- (vals - q_low) / (q_high - q_low)
+  scaled <- scaled * 0.98 + 0.01    # shift non-zero to 0.01–0.99
+  
+  out[nz] <- scaled
+  return(out)
+}
+
+# Apply scaling to EXISTING incidence (no recalculation)
+human_scaled <- human_inc %>%
+  mutate(
+    Inc_scaled_is_cases = scale_01(Inc_is_cases),
+    Inc_scaled_dv_cases = scale_01(Inc_dv_cases),
+    Inc_scaled_aa_cases = scale_01(Inc_aa_cases)
+  ) %>%
+  mutate(
+    across(where(is.numeric), ~ round(.x, 5))
+  )
+
+print(human_scaled)
+
+# Export
+write_csv(
+  human_scaled,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/TBD cases/TBD_annual_average_incidence_scaled_vector.csv"
+)
+```
+
+
+## Annual average Tick bite inciedecne and scaling
+```{r}
+
+# Annual average tick-bite incidence
+
+library(dplyr)
+library(readr)
+
+#library(dplyr)
+library(readr)
+
+# Read data
+file_path <- "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick bite/tick_encounter.csv"
+bite <- read_csv(file_path)
+
+# Calculate average annual incidence per 100,000
+bite_inc <- bite %>%
+  mutate(
+    Inc_aa_bite    = (aa_bite    / (Population * 4)) * 1e5,
+    Inc_dv_bite    = (dv_bite    / (Population * 4)) * 1e5,
+    Inc_is_bite    = (is_bite    / (Population * 4)) * 1e5,
+    Inc_total_bite = (total_bite / (Population * 4)) * 1e5
+  ) %>%
+  mutate(across(starts_with("Inc_"), ~ round(.x, 4)))
+
+print(bite_inc)
+
+# Export ONLY incidence
+write_csv(
+  bite_inc,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick bite/tick_bite_annual_average_incidence.csv"
+)
+
+#scaling of tick bite incidence
+# SAME scaling function as predicted tick
+scale_01 <- function(x) {
+  q_low  <- quantile(x, 0.01, na.rm = TRUE)
+  q_high <- quantile(x, 0.99, na.rm = TRUE)
+
+  x <- pmin(pmax(x, q_low), q_high)
+
+  scaled <- (x - q_low) / (q_high - q_low)
+  scaled <- scaled * 0.98 + 0.01   # range: 0.01–0.99
+
+  return(scaled)
+}
+
+# Apply scaling ONLY to incidence columns
+bite_scaled <- bite_inc %>%
+  mutate(
+    Inc_scaled_aa_bite    = scale_01(Inc_aa_bite),
+    Inc_scaled_dv_bite    = scale_01(Inc_dv_bite),
+    Inc_scaled_is_bite    = scale_01(Inc_is_bite),
+    Inc_scaled_total_bite = scale_01(Inc_total_bite)
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 5)))
+
+print(bite_scaled)
+
+# Export scaled file
+write_csv(
+  bite_scaled,
+  "C:/Users/abrar/OneDrive - University of Illinois - Urbana/Documents/Abrar Hussain/Ph.D/Ph.D. Papers/As Authors/TBD Risk Score Illinois/Data/Tick bite/tick_bite_annual_average_incidence_scaled.csv"
+)
+
+
+```
+
+
